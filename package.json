@@ -1,6 +1,6 @@
 {
   "name": "dsh-recheck",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "description": "Track conclusions and revisit them when evidence files change.",
   "type": "module",
   "main": "lib/index.js",
@@ -22,7 +22,8 @@
     "docs/12-installation.md",
     "docs/13-public-release-validation.md",
     "docs/assets/*.png",
-    "docs/14-npm-release-validation.md"
+    "docs/14-npm-release-validation.md",
+    "docs/15-ui-refresh.md"
   ],
   "license": "MIT",
   "engines": {
@@ -50,7 +51,8 @@
     "prepack": "npm run check",
     "benchmark": "npm run build && node scripts/benchmark.mjs",
     "test:web": "node scripts/web-smoke.mjs",
-    "test:package": "node scripts/package-smoke.mjs"
+    "test:package": "node scripts/package-smoke.mjs",
+    "test:ui": "node scripts/ui-smoke.mjs"
   },
   "dependencies": {
     "zod": "4.6.5"

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-alpha.4 — 2026-10-04
+
+- Redesign the main sidebar with compact controls, project context, statistics, scope buttons, search, status badges and useful empty states.
+- Group create/edit forms into clear sections with Unicode character counters and concise draft guidance.
+- Reuse Harness theme tokens for light/dark colors, control radii and interaction states; retain keyboard navigation and narrow-pane layouts.
+- Keep the Host API, schemaVersion 1 and DSH 0.2.0-rc.2 requirements unchanged. Distribute the same built package through npm alpha and GitHub Releases.
+
 ## 0.1.0-alpha.3 — 2026-10-03
 
 - Enable public npm distribution with explicit registry and alpha dist-tag, and document pinned npm installation.

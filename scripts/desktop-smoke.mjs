@@ -14,8 +14,12 @@ assert.ok(executablePath, '请用 --app 或 RECHECK_DESKTOP_APP 指定已安装�
 const projectName = `Recheck安装验收-${randomUUID().slice(0, 8)}`
 const project = join(root, '.integration', projectName)
 await mkdir(project, { recursive: true }); await writeFile(join(project, 'evidence.txt'), '初始依据\n')
+// UI 开发可使用独立 Harness home 和 Electron user-data，避免打断日常客户端。
+const isolatedHome = option('--home'), userData = option('--user-data-dir')
+assert.equal(Boolean(isolatedHome), Boolean(userData), '隔离验收必须同时指定 --home 和 --user-data-dir。')
 const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.DSH_HOME
-const app = await electron.launch({ executablePath, args: [], env, timeout: 30_000 })
+if (isolatedHome) env.DSH_HOME = resolve(isolatedHome)
+const app = await electron.launch({ executablePath, args: userData ? [`--user-data-dir=${resolve(userData)}`] : [], env, timeout: 30_000 })
 const page = await app.firstWindow(), errors = []
 page.on('pageerror', error => errors.push(error.message))
 const panel = page.getByRole('region', { name: 'Recheck 结论保鲜盒', exact: true })
@@ -25,7 +29,8 @@ async function saved(name) { await button(name).click(); await panel.getByRole('
 try {
   const metadata = await app.evaluate(({ app }) => ({ version: app.getVersion(), name: app.getName(), userData: app.getPath('userData') }))
   assert.equal(metadata.version, '0.2.0-rc.2')
-  const profile = join(homedir(), '.dsh/profiles/desktop')
+  if (userData) assert.equal(resolve(metadata.userData), resolve(userData), '必须隔离 Electron 用户数据。')
+  const profile = join(isolatedHome ? resolve(isolatedHome) : join(homedir(), '.dsh'), 'profiles/desktop')
   const manifest = JSON.parse(await readFile(join(profile, 'package.json'), 'utf8'))
   assert.ok(manifest.dsh.profile.bundles.includes('dsh-recheck'))
   for (const path of ['lib/index.js', 'lib/client.js', 'cordis.patch.yml']) {
@@ -49,15 +54,15 @@ try {
   await panel.getByLabel('标题（最多 120 字符）').fill('Recheck 本机安装验收（测试）')
   await panel.getByLabel('结论（最多 2,000 字符）').fill('字节变化会提示复核，未变化不能证明结论正确。')
   await panel.getByLabel('依据文件（项目相对路径，每行一个，1–8 个）').fill('evidence.txt')
-  await saved('保存'); assert.match(await panel.innerText(), /尚未检查 · 复核意见：尚未复核/)
-  await saved('检查依据并保存'); assert.match(await panel.innerText(), /依据未变化 · 复核意见：尚未复核/)
+  await saved('保存'); assert.match(await panel.innerText(), /尚未检查\s*·\s*复核意见：尚未复核/)
+  await saved('检查依据并保存'); assert.match(await panel.innerText(), /依据未变化\s*·\s*复核意见：尚未复核/)
   await writeFile(join(project, 'evidence.txt'), '修改后的依据\n')
-  await saved('检查依据并保存'); assert.match(await panel.innerText(), /依据已变化 · 复核意见：尚未复核/)
+  await saved('检查依据并保存'); assert.match(await panel.innerText(), /依据已变化\s*·\s*复核意见：尚未复核/)
   await button('记录复核').click()
   assert.equal(await panel.getByLabel('复核意见').inputValue(), '')
   await panel.getByLabel('复核意见').selectOption('uncertain')
   await panel.getByLabel('复核说明（必填）').fill('本机测试显式选择不确定，需要后续阅读核实。')
-  await saved('保存'); assert.match(await panel.innerText(), /依据未变化 · 复核意见：不确定/)
+  await saved('保存'); assert.match(await panel.innerText(), /依据未变化\s*·\s*复核意见：不确定/)
   // 仅修改本脚本 fixture，模拟其他程序在用户表单打开后更新 JSON。
   await button('编辑').click()
   await panel.getByLabel('标题（最多 120 字符）').fill('Recheck 本机验收完成（测试）')
