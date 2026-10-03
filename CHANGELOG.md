@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-alpha.3 — 2026-10-03
+
+- Enable public npm distribution with explicit registry and alpha dist-tag, and document pinned npm installation.
+- Remove private package metadata and keep npm/GitHub release artifacts aligned.
+- Runtime code, DSH 0.2.0-rc.2 requirements and schemaVersion 1 remain unchanged from alpha.2. Validation scope: docs/14-npm-release-validation.md.
+
 ## 0.1.0-alpha.2 — 2026-10-03
 
 - Prepare public GitHub distribution with bilingual documentation, installation instructions and a reproducible demo.

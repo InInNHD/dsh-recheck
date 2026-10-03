@@ -22,17 +22,17 @@ git push -u origin fix/具体问题
 package.json、package-lock.json、Git tag 和 Release 保持一致。已经发布的 tag 和 tgz 不替换；修复后增加版本号。
 
 ```powershell
-npm.cmd version 0.1.0-alpha.3 --no-git-tag-version
+npm.cmd version 0.1.0-alpha.4 --no-git-tag-version
 # 更新 README、CHANGELOG 和公开验收记录
 npm.cmd run check
 npm.cmd run test:package
 npm.cmd pack
 git add package.json package-lock.json README.md README.en.md CHANGELOG.md docs
-git commit -m 'chore: prepare 0.1.0-alpha.3'
+git commit -m 'chore: prepare 0.1.0-alpha.4'
 git push origin main
 # 等待该提交的 CI 通过后
-git tag -a v0.1.0-alpha.3 -m 'Recheck 0.1.0-alpha.3'
-git push origin v0.1.0-alpha.3
+git tag -a v0.1.0-alpha.4 -m 'Recheck 0.1.0-alpha.4'
+git push origin v0.1.0-alpha.4
 ```
 
 在 GitHub 对同一 tag 创建预发布 Release，附真实 tgz、SHA-256 校验文件、变更摘要及验证范围。安装包必须由该 tag 源码构建。GitHub 自动源码 ZIP 不含忽略的 lib，不能直接当安装包。
@@ -40,7 +40,7 @@ git push origin v0.1.0-alpha.3
 生成校验文件（PowerShell）：
 
 ```powershell
-$recheckPackage = 'dsh-recheck-0.1.0-alpha.3.tgz'
+$recheckPackage = 'dsh-recheck-0.1.0-alpha.4.tgz'
 $recheckHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $recheckPackage).Hash.ToLowerInvariant()
 Set-Content -LiteralPath "$recheckPackage.sha256" -Value "$recheckHash  $recheckPackage" -Encoding ascii
 ```
@@ -51,6 +51,14 @@ Set-Content -LiteralPath "$recheckPackage.sha256" -Value "$recheckHash  $recheck
 
 项目运行数据单独备份。git push 只同步已提交历史，不会备份忽略目录。
 
-## npm 后续发布
+## npm 发布
 
-本次按维护者选择仅发布 GitHub Release，package.json 保留 private:true。若以后发布 npm：先核实包名/账号，移除 private，同步锁文件和发布元数据，完成检查并增加版本，再使用 npm publish --tag alpha。预发布不要默认标为 latest；凭据只使用本机登录或 CI 的受控认证机制，不提交 .npmrc 或 token。
+alpha.2 仅在 GitHub 分发；alpha.3 移除 private 并设置 publishConfig 为官方 registry/public/alpha。先核对登录账号、包名和新版本，使用同一 tgz 发布到 npm 与 GitHub Release，避免同名同版本出现不同安装包。
+
+```powershell
+npm.cmd whoami --registry https://registry.npmjs.org
+npm.cmd publish ./dsh-recheck-0.1.0-alpha.4.tgz --tag alpha --access public --registry https://registry.npmjs.org
+npm.cmd view dsh-recheck@0.1.0-alpha.4 version dist.integrity --registry https://registry.npmjs.org
+```
+
+预发布不要默认标为 latest；凭据只使用本机登录或受控 CI 认证，不提交 .npmrc 或 token。若 CLI 要求浏览器或一次性验证码，在本机完成认证，不将凭据写进文档。GitHub 账号绑定与 npm Trusted Publisher 配置是不同操作；本次使用本机登录发布，不额外创建自动发布工作流。

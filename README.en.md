@@ -8,22 +8,29 @@
 
 Bind project conclusions to evidence files and revisit them when those files change. Recheck contributes one `recheck` tool and a native DSH right sidebar. Card operations require no additional model calls.
 
-Version: **0.1.0-alpha.2**. Host requirement: **DeepSeek Harness 0.2.0-rc.2**, Node.js **24**. Other host versions are unverified. Windows has real Web/Desktop acceptance evidence. The release adds Windows/Linux CI, packaged install/uninstall/reinstall checks and Linux Web checks; see [verified scope](docs/13-public-release-validation.md). The release remains alpha.
+Version: **0.1.0-alpha.3**. Host requirement: **DeepSeek Harness 0.2.0-rc.2**, Node.js **24**. Other host versions are unverified. Windows/Ubuntu have real Web acceptance evidence; Desktop evidence is from alpha.1. This version only updates npm distribution metadata and documentation; see [verified scope](docs/14-npm-release-validation.md). The release remains alpha.
 
 ![Native Recheck sidebar with a disposable test card](docs/assets/recheck.png)
 
 ## Install
 
+Install the pinned npm version with the matching Web host:
+
+```sh
+npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.3
+npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
+```
+
 Download the tgz and SHA-256 checksum from Releases. For Web, run these commands from the download directory with the matching host:
 
 ```sh
-npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add ./dsh-recheck-0.1.0-alpha.2.tgz
+npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add ./dsh-recheck-0.1.0-alpha.3.tgz
 npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
 Use `npx.cmd` in Windows PowerShell. Desktop users install into the `desktop` profile through the application's bundled CLI or plugin manager, then restart Desktop. Do not start the Electron desktop profile with a standalone Web CLI. [Full install, backup, removal and rollback instructions](docs/12-installation.md).
 
-The release tgz includes built files. GitHub's automatically generated source ZIP requires a build. There is no published npm package yet.
+The release tgz includes built files. GitHub's automatically generated source ZIP requires a build. This version supports the npm `alpha` channel as well as GitHub Release distribution.
 
 ## Demo
 
