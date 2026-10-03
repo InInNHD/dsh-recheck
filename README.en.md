@@ -8,23 +8,27 @@
 
 Bind project conclusions to evidence files and revisit them when those files change. Recheck contributes one `recheck` tool and a native DSH right sidebar. Card operations require no additional model calls.
 
-Version: **0.1.0-alpha.3**. Host requirement: **DeepSeek Harness 0.2.0-rc.2**, Node.js **24**. Other host versions are unverified. Windows/Ubuntu have real Web acceptance evidence; Desktop evidence is from alpha.1. This version only updates npm distribution metadata and documentation; see [verified scope](docs/14-npm-release-validation.md). The release remains alpha.
+Version: **0.1.0-alpha.4**, distributed through npm `alpha` and GitHub Releases. Host requirement: **DeepSeek Harness 0.2.0-rc.2**, Node.js **24**. The UI follows Harness theme tokens and compact controls, with grouped forms and character counters. See [UI acceptance and local installation](docs/15-ui-refresh.md). Other host versions are unverified. The project remains alpha.
 
-![Native Recheck sidebar with a disposable test card](docs/assets/recheck.png)
+![Recheck alpha.4 sidebar](docs/assets/recheck-alpha4-main.png)
+
+![Recheck alpha.4 create form](docs/assets/recheck-alpha4-create.png)
 
 ## Install
+
+The commands below pin alpha.4. See the [UI acceptance notes](docs/15-ui-refresh.md) for upgrade and verification scope.
 
 Install the pinned npm version with the matching Web host:
 
 ```sh
-npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.3
+npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.4
 npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
 Download the tgz and SHA-256 checksum from Releases. For Web, run these commands from the download directory with the matching host:
 
 ```sh
-npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add ./dsh-recheck-0.1.0-alpha.3.tgz
+npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add ./dsh-recheck-0.1.0-alpha.4.tgz
 npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 

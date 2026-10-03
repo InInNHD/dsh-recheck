@@ -8,23 +8,27 @@
 
 给项目结论绑定文件依据，在依据变化后提醒复核。Recheck 提供一个 `recheck` 工具与 DSH 原生右侧栏；卡片操作不需要额外模型调用。
 
-当前版本 **0.1.0-alpha.3**，宿主限定 **DeepSeek Harness 0.2.0-rc.2**，Node.js **24**。旧版和新版 DSH 未声明兼容。Windows/Ubuntu 已有真实 Web 验证；Desktop 证据来自 alpha.1。本版仅更新 npm 发布元数据与文档，实际通过范围见 [公开发布验证](docs/14-npm-release-validation.md)。版本保持 alpha。
+当前版本 **0.1.0-alpha.4**，通过 npm `alpha` 与 GitHub Release 分发。宿主限定 **DeepSeek Harness 0.2.0-rc.2**，Node.js **24**。本次改版采用宿主主题、紧凑布局和分组表单，实际验证范围与本地安装方法见 [UI 改版验收](docs/15-ui-refresh.md)。其他宿主版本未声明兼容，版本保持 alpha。
 
-![Recheck 原生侧栏中的测试卡片](docs/assets/recheck.png)
+![Recheck alpha.4 主界面](docs/assets/recheck-alpha4-main.png)
+
+![Recheck alpha.4 新建表单](docs/assets/recheck-alpha4-create.png)
 
 ## 安装
 
-从 Releases 下载 `dsh-recheck-0.1.0-alpha.3.tgz` 和同名 `.sha256` 文件，校验后通过匹配版本宿主安装。普通 Web 用户可从 npm 安装固定版本：
+以下命令使用固定的 alpha.4 版本。升级与验证范围见 [UI 改版验收](docs/15-ui-refresh.md)。
+
+从 Releases 下载 `dsh-recheck-0.1.0-alpha.4.tgz` 和同名 `.sha256` 文件，校验后通过匹配版本宿主安装。普通 Web 用户可从 npm 安装固定版本：
 
 ```powershell
-npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.3
+npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.4
 npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
 使用下载的 tgz 时，在安装包所在目录运行：
 
 ```powershell
-npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0-alpha.3.tgz'
+npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0-alpha.4.tgz'
 npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
