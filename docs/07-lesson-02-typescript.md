@@ -1,3 +1,5 @@
+> 历史学习记录，示例配置不是当前实现。当前版本请看根目录 README 和 13-public-release-validation.md。
+
 # 第 02 课：建立正式 TypeScript 项目
 
 开发工具：VS Code。  

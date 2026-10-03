@@ -1,3 +1,5 @@
+> 历史学习记录，示例配置不是当前实现。当前版本请看根目录 README 和 13-public-release-validation.md。
+
 # 第 02 课续：验证类型检查，迁移正式状态函数
 
 前置结果：用户安装了 TypeScript 7.0.2、@types/node 24.19.1，首次 npm.cmd run typecheck 无类型错误。

@@ -1,0 +1,22 @@
+name: Bug report / 问题反馈
+description: Report a reproducible Recheck problem / 提供可复现的问题
+body:
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions / 环境版本
+      description: Plugin, DSH, Node.js, operating system, Web or Desktop.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction / 最小复现
+      description: Steps, expected result and actual result. Use disposable sample files.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs / 脱敏日志
+      description: Remove tokens, API keys, private file contents and real session data.

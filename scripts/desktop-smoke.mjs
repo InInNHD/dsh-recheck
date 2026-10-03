@@ -9,11 +9,13 @@ import { _electron as electron } from 'playwright'
 // 开发验收启动真正安装的应用。仅替代文件夹选择结果，宿主/RPC/文件系统均保持真实。
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const option = key => { const i = process.argv.indexOf(key); return i < 0 ? undefined : process.argv[i + 1] }
+const executablePath = option('--app') ?? process.env.RECHECK_DESKTOP_APP
+assert.ok(executablePath, '请用 --app 或 RECHECK_DESKTOP_APP 指定已安装的桌面应用。')
 const projectName = `Recheck安装验收-${randomUUID().slice(0, 8)}`
 const project = join(root, '.integration', projectName)
 await mkdir(project, { recursive: true }); await writeFile(join(project, 'evidence.txt'), '初始依据\n')
 const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE; delete env.DSH_HOME
-const app = await electron.launch({ executablePath: option('--app') ?? 'E:/DeepSeek Harness/DeepSeek Harness.exe', args: [], env, timeout: 30_000 })
+const app = await electron.launch({ executablePath, args: [], env, timeout: 30_000 })
 const page = await app.firstWindow(), errors = []
 page.on('pageerror', error => errors.push(error.message))
 const panel = page.getByRole('region', { name: 'Recheck 结论保鲜盒', exact: true })

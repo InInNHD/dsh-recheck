@@ -28,7 +28,7 @@ if (process.platform === 'win32') {
   // npm.cmd 是 Windows 命令脚本；通过 PowerShell 参数调用，避免字符串拼接执行路径。
   const quote = s => `'${s.replaceAll("'", "''")}'`
   execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-    `& npm.cmd install --prefix ${quote(profile)} --save-exact '@deepseek-ai/dsh@0.2.0-rc.2' ${quote(installTarball)}; exit $LASTEXITCODE`], { stdio: 'inherit' })
+    `& npm.cmd install --prefix ${quote(profile)} --save-exact '@deepseek-ai/dsh@0.2.0-rc.2' ${quote(installTarball)}; exit $LASTEXITCODE`], { stdio: 'inherit', windowsHide: true })
 } else execFileSync('npm', ['install', '--prefix', profile, '--save-exact', '@deepseek-ai/dsh@0.2.0-rc.2', installTarball], { stdio: 'inherit' })
 console.log(`独立 Web 配置安装完成：${profile}`)
 console.log('使用该配置内的 DSH CLI 启动。启动命令见 README.md。')

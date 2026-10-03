@@ -1,3 +1,5 @@
+> 历史学习记录，示例配置不是当前实现。当前版本请看根目录 README 和 13-public-release-validation.md。
+
 # 第 01 课：亲手写出 Recheck 的核心比较逻辑
 
 对应计划：M0 / 第 01 课。  
