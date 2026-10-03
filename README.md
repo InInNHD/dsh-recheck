@@ -1,5 +1,7 @@
 # Recheck · 结论保鲜盒
 
+[![CI](https://github.com/InInNHD/dsh-recheck/actions/workflows/ci.yml/badge.svg)](https://github.com/InInNHD/dsh-recheck/actions/workflows/ci.yml)
+
 [English](README.en.md) · [下载 alpha 安装包](https://github.com/InInNHD/dsh-recheck/releases) · [安装指南](docs/12-installation.md) · [问题反馈](https://github.com/InInNHD/dsh-recheck/issues)
 
 **非官方项目，由社区成员独立开发和维护。**

@@ -1,5 +1,7 @@
 # Recheck
 
+[![CI](https://github.com/InInNHD/dsh-recheck/actions/workflows/ci.yml/badge.svg)](https://github.com/InInNHD/dsh-recheck/actions/workflows/ci.yml)
+
 [简体中文](README.md) · [Releases](https://github.com/InInNHD/dsh-recheck/releases) · [Installation](docs/12-installation.md) · [Issues](https://github.com/InInNHD/dsh-recheck/issues)
 
 **Unofficial community project, independently developed and maintained.**
