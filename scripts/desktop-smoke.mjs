@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
+import { waitForRecheckReady, verifyDiagnostics } from './diagnostics-smoke.mjs'
 
 // 开发验收启动真正安装的应用。仅替代文件夹选择结果，宿主/RPC/文件系统均保持真实。
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -49,6 +50,7 @@ try {
   const guide = page.locator('[data-sidebar-right-guide-entry="recheck"]')
   await guide.waitFor({ timeout: 3000 }).catch(() => {}); if (await guide.isVisible()) await guide.click()
   await button('新建卡片').waitFor(); await idle()
+  await waitForRecheckReady(page)
   assert.match(await panel.innerText(), new RegExp(projectName))
   await button('新建卡片').click()
   await panel.getByLabel('标题（最多 120 字符）').fill('Recheck 本机安装验收（测试）')
@@ -92,8 +94,10 @@ try {
   assert.equal(store.cards.length, 1); assert.equal(store.cards[0].versions.length, 2); assert.equal(store.cards[0].versions[0].actor.kind, 'user')
   assert.equal(store.cards[0].archived, false); assert.equal(errors.length, 0, errors.join('\n'))
   await page.mouse.move(1000, 80); await panel.evaluate(el => { el.scrollTop = 0 })
+  await verifyDiagnostics(page, { project, hostVersion: metadata.version, simulateMismatch: false })
   await page.screenshot({ path: join(project, 'desktop-result.png'), fullPage: true })
   const report = { passed: true, metadata, profile, project, checks: ['实际 desktop 配置启用', '安装文件与交付包一致', '原生 Electron 页面与项目绑定', '创建及双状态', '文件未变/变化检查', '主动不确定复核', '外部并发冲突及草稿保留', '导出新文件并拒绝覆盖', '归档恢复及历史保留', 'UTC及时区展开', '列表搜索', '没有页面异常'], dialogSelectionStubbed: true, modelMessagesSent: false, screenshot: join(project, 'desktop-result.png') }
+  report.checks.push('alpha.5 真实版本诊断', '诊断白名单与窄栏', '真实命中测试等待启动覆盖层消失')
   await writeFile(join(root, '.integration/desktop-smoke-result.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2))
 } catch (error) {
   await page.screenshot({ path: join(project, 'desktop-failure.png'), fullPage: true }).catch(() => {})

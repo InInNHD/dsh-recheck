@@ -18,6 +18,27 @@ import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import LocalSandboxProvider from '@deepseek-ai/dsh-sandbox-local'
 import NodePtcRuntime from '@deepseek-ai/dsh-ptc-runtime-node'
 
+test('真实 Cordis 连续启停 20 次：工具撤销、重注册和跨会话来源均正确', async t => {
+  const cwd = await mkdtemp(join(tmpdir(), 'recheck-lifecycle-'))
+  t.after(() => rm(cwd, { recursive: true, force: true }))
+  const ctx = new Context()
+  ctx.provide('sandboxPolicy', { defaultMode: 'workspace-write', resolve: () => ({ mode: 'workspace-write', workspaceRoot: cwd }) })
+  new SandboxedFileSystem(ctx, LocalFileSystem.Config({ cwd }))
+  new SystemPrompt(ctx, SystemPrompt.Config({}))
+  const tools = new ToolRuntime(ctx, { mode: 'native' }), sessions = new SessionStore(ctx)
+  observationPolicy.apply(ctx)
+  for (let i = 0; i < 20; i++) {
+    const fiber = await ctx.plugin(plugin)
+    try {
+      assert.ok(tools.get('recheck'))
+      const session = sessions.create(undefined, { meta: { cwd } })
+      const result = await tools.execute({ name: 'recheck', callId: ToolCallId(`lifecycle-${i}`), arguments: { action: 'list' }, agent: { session, ctx }, signal: new AbortController().signal })
+      assert.equal(result.isError, false); assert.equal(result.value.status, 'ok', JSON.stringify(result.value))
+    } finally { await fiber.dispose() }
+    assert.equal(tools.get('recheck'), undefined, `第 ${i + 1} 次停用后工具必须撤销`)
+  }
+})
+
 test('真实 ToolRuntime 注册、Native 分发和 Host 来源绑定', async t => {
   const cwd = await mkdtemp(join(tmpdir(), 'recheck-host-'))
   t.after(() => rm(cwd, { recursive: true, force: true }))
