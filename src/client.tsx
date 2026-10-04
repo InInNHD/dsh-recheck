@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { Assessment, Card, Check, Freshness, Request, Response } from './types.js'
 import { freshness, current } from './cards.js'
 import { styles } from './client-styles.js'
+import { pluginVersion, supportedHosts, guidance, type DiagnosticInfo } from './diagnostic-info.js'
 
 // 小型线框图标与宿主工具栏保持一致，不引入额外图标依赖。
 function Icon({ name }: { name: 'box' | 'plus' | 'refresh' | 'folder' | 'search' | 'arrow' | 'info' }) {
@@ -39,7 +40,7 @@ type Summary = { cardId: string; versionId: string; title: string; revision: num
 type Listing = { workspace: { id: string; name: string; writable: boolean }; counts: { active: number; archived: number; total: number; needsAttention: number }; cards: Summary[] }
 type Form = { mode: 'create' | 'edit' | 'review'; cardId?: string; expectedRevision?: number; checkId?: string;
   title: string; claim: string; files: string; note: string; assessment: '' | Exclude<Assessment, 'unreviewed'> }
-type Props = { sessionId: string; call: (request: Request, signal: AbortSignal) => Promise<Response> }
+type Props = { sessionId: string; call: (request: Request, signal: AbortSignal) => Promise<Response>; diagnose: (signal: AbortSignal) => Promise<DiagnosticInfo> }
 // 草稿只保存在本次客户端内存中，以宿主返回的项目身份隔离。
 const drafts = new Map<string, Form>()
 function Stamp({ value }: { value: string }) {
@@ -64,6 +65,8 @@ function Panel(props: Props) {
   const [fullHistory, setFullHistory] = useState(false), [temporary, setTemporary] = useState<Check>()
   const [temporaryBatch, setTemporaryBatch] = useState<Record<string, Check>>({})
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('')
+  const [diagnostic, setDiagnostic] = useState<DiagnosticInfo>(), [diagnosticText, setDiagnosticText] = useState('')
+  const running = useRef(false)
   const requests = useRef(new Set<AbortController>()), mounted = useRef(true), workspace = useRef<string>()
   const focusError = useRef<HTMLParagraphElement>(null)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; for (const request of requests.current) request.abort() } }, [])
@@ -75,8 +78,9 @@ function Panel(props: Props) {
     const controller = new AbortController(); requests.current.add(controller)
     try {
       const result = await props.call(request, controller.signal)
+      controller.signal.throwIfAborted()
       if (!mounted.current) throw new DOMException('会话已切换', 'AbortError')
-      if (result.status === 'rejected') throw new Error(`${result.reason.message}（${result.reason.code}）`)
+      if (result.status === 'rejected') throw new Error(`${result.reason.message}（${result.reason.code}） ${guidance(result.reason.code)}`)
       return result.data
     } finally { requests.current.delete(controller) }
   }
@@ -91,11 +95,23 @@ function Panel(props: Props) {
     }
   }
   async function run(fn: () => Promise<void>) {
-    if (busy) return
+    if (running.current) return
+    running.current = true
     setBusy(true); setError(''); setMessage('')
     try { await fn() } catch (e) {
       if (mounted.current && !(e instanceof Error && e.name === 'AbortError')) setError(e instanceof Error ? e.message : '操作失败。')
-    } finally { if (mounted.current) setBusy(false) }
+    } finally { running.current = false; if (mounted.current) setBusy(false) }
+  }
+  async function diagnose() {
+    const controller = new AbortController(); requests.current.add(controller)
+    setDiagnostic(undefined); setDiagnosticText('')
+    try {
+      const value = await props.diagnose(controller.signal)
+      controller.signal.throwIfAborted()
+      if (!mounted.current) throw new DOMException('会话已切换', 'AbortError')
+      setDiagnostic(value)
+      setDiagnosticText(JSON.stringify({ clientPluginVersion: pluginVersion, ...value }, null, 2))
+    } finally { requests.current.delete(controller) }
   }
   useEffect(() => { void run(refresh) }, [archived])
   const canWrite = list?.workspace.writable === true
@@ -175,6 +191,22 @@ function Panel(props: Props) {
       </div>
     </header>
     <div className="rc-project"><Icon name="folder" /><p>当前项目：{list?.workspace.name ?? (error ? '尚未连接到有效工作区' : '正在读取工作区…')}{list && !canWrite ? ' · 只读' : ''}</p></div>
+    <details className="rc-diagnostics"><summary>版本与诊断</summary>
+      <p className="rc-muted">客户端加载版本：{pluginVersion}<br />支持的宿主：{supportedHosts.join('、')}</p>
+      <button disabled={busy} onClick={() => void run(diagnose)}>读取诊断</button>
+      {diagnostic && <>
+        <p>Host 加载版本：{diagnostic.hostPluginVersion}<br />宿主包版本：{diagnostic.hostPackageVersion ?? '无法读取'}<br />安装版本：{diagnostic.installedPluginVersion ?? '无法读取'}<br />运行配置（profile）：无法读取</p>
+        <p className="rc-muted">宿主包版本来自运行时包解析器。安装后尚未加载的版本请在宿主插件管理页核对；更新后完全重启客户端。</p>
+        {diagnostic.hostPluginVersion !== pluginVersion && <p className="rc-notice" role="alert">客户端与 Host 版本不一致。保存当前工作后完全重启客户端；不要重复提交未确认的操作。</p>}
+        {diagnostic.installedPluginVersion && diagnostic.installedPluginVersion !== diagnostic.hostPluginVersion && <p className="rc-notice" role="alert">安装版本尚未在 Host 生效，请保存当前工作并完全重启客户端。</p>}
+        {diagnostic.hostPackageVersion && !diagnostic.supportedHosts.includes(diagnostic.hostPackageVersion) && <p className="rc-notice">此宿主版本未列入兼容清单，请使用已验证组合。</p>}
+        <p>会话写入策略：{diagnostic.access === 'read-only' ? '只读' : diagnostic.access === 'write-permitted' ? '允许写入（仍受文件权限约束）' : '无法读取'}<br />支持的数据格式：schema {diagnostic.supportedSchema}<br />存储状态：{diagnostic.storage === 'valid' ? '结构校验通过（schema 1）' : diagnostic.storage === 'absent' ? '尚未创建数据文件' : '无法读取或校验'}</p>
+        {diagnostic.reasonCode && <p className="rc-notice">{diagnostic.reasonCode}：{guidance(diagnostic.reasonCode)}</p>}
+        <textarea aria-label="诊断摘要" readOnly rows={5} value={diagnosticText} />
+        <button disabled={busy} onClick={() => void run(async () => { try { await navigator.clipboard.writeText(diagnosticText); setMessage('诊断摘要已复制。') } catch { setMessage('无法自动复制，请在诊断摘要中手动选择并复制。') } })}>复制诊断摘要</button>
+        <p className="rc-muted">摘要不包含项目路径、会话身份、卡片或依据正文。权限和存储状态仅代表本次读取，可重新读取更新。</p>
+      </>}
+    </details>
     <p className="rc-notice" role="alert" tabIndex={-1} ref={focusError} hidden={!error}>{error}</p>
     <p className="rc-notice" role="status" aria-live="polite">{message}</p>
     {busy && <button className="rc-cancel" onClick={() => { for (const request of requests.current) request.abort(); setMessage('取消已发出；如果提交已完成，请刷新确认实际保存结果。') }}>取消当前操作</button>}
@@ -296,6 +328,13 @@ export function apply(ctx: Context): void {
     guide: [{ id: 'recheck', order: 80, title: () => 'Recheck · 结论保鲜盒', description: () => '收藏项目结论，检查依据变化并记录复核意见。' }] }))
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: 'dsh-recheck',
     inject: (sessionId): Props => ({ sessionId,
+      diagnose: async signal => {
+        const result = await connection.rpc.call('/api', 'recheck/diagnostics', { sessionId }, signal)
+        if (!result.ok) throw new Error('诊断连接失败。确认 Host 已升级到 alpha.5，再完全重启客户端。')
+        const value = result.value as DiagnosticInfo
+        if (!value || typeof value.hostPluginVersion !== 'string') throw new Error('Host 未提供有效诊断，请核对加载版本并重启。')
+        return value
+      },
       call: async (request, signal) => {
         const result = await connection.rpc.call('/api', 'recheck/dispatch', { sessionId, request }, signal)
         if (!result.ok) throw new Error(result.error.message)

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.0-alpha.5 — 2026-10-04
+
+- Add an authenticated, read-only diagnostics panel with client/Host loaded versions, installed bundle version when available, runtime host package version, session write policy and schema validation status.
+- Copy only allowlisted diagnostic fields; omit workspace paths, session identifiers, card content, evidence and raw exceptions. Explain common rejection codes and version mismatches.
+- Discard aborted client responses even when transport finishes late; prevent simultaneous UI submissions and cancel diagnostics on plugin disposal.
+- Add explicit compatibility metadata and a two-host candidate CI matrix; validate real SDKs inside each isolated installation, repeat live enable/disable cycles and check startup-animation coexistence. Exact completed validation and limitations are recorded in docs/17-alpha5-acceptance.md.
+- Keep schemaVersion 1 and the eight business actions unchanged. Distribute the same built package through npm alpha and GitHub Releases.
+
+- Retain the known intermittent Host save-error investigation: final packaged checks and 100 extra conflict-recovery cycles passed, but the earlier failure has no confirmed root cause.
+
 ## 0.1.0-alpha.4 — 2026-10-04
 
 - Redesign the main sidebar with compact controls, project context, statistics, scope buttons, search, status badges and useful empty states.

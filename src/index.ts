@@ -11,6 +11,9 @@ export { Recheck } from './recheck.js'
 import { RecheckError, reject, text } from './cards.js'
 import type { Environment } from './io.js'
 import type { Response } from './types.js'
+import { diagnostics } from './diagnostics.js'
+export { diagnostics } from './diagnostics.js'
+export { pluginVersion, supportedHosts, guidance } from './diagnostic-info.js'
 
 export const name = 'recheck'
 export const inject = ['fs', 'tools', 'sandboxPolicy']
@@ -60,6 +63,7 @@ function rejected(action: string, error: RecheckError): Response {
 }
 export function apply(ctx: Context): void {
   const service = new Recheck()
+  const diagnosticLifetime = new AbortController()
   // 注册表可能在提交完成后把调用标为取消；仍通过最终内容准确交代已保存事实。
   const committed = new WeakMap<object, Response>()
   const definition = defineTool({ name: 'recheck',
@@ -95,33 +99,36 @@ export function apply(ctx: Context): void {
   // headless 模式也能使用工具；Web 连接出现时再挂载经过宿主认证的 RPC。
   ctx.inject(['connection', 'sessionController', 'fs', 'sandboxPolicy'], (web) => {
     // 精确 Fetch 路由与 Gateway 的唯一共享拦截器共存；认证由已有 /api 载体执行。
-    web.effect(() => web.connection.fetch.register({ path: '/api/recheck/dispatch', methods: ['POST'], requestBody: 'buffered',
+    for (const method of ['recheck/dispatch', 'recheck/diagnostics']) web.effect(() => web.connection.fetch.register({ path: `/api/${method}`, methods: ['POST'], requestBody: 'buffered',
       async fetch(http) {
         if (http.headers.get('content-type')?.split(';', 1)[0]?.trim() !== 'application/json') return new globalThis.Response('需要 JSON 请求。', { status: 415 })
         let raw: unknown
         try { raw = await http.json() } catch { return new globalThis.Response('JSON 无效。', { status: 400 }) }
         const parsed = clientRequestSchema.safeParse(raw)
-        if (!parsed.success || parsed.data.method !== 'recheck/dispatch') return new globalThis.Response('RPC 请求无效。', { status: 400 })
-        const result = await dispatch(parsed.data.payload, http.signal)
+        if (!parsed.success || parsed.data.method !== method) return new globalThis.Response('RPC 请求无效。', { status: 400 })
+        const result = await dispatch(parsed.data.payload, method === 'recheck/diagnostics' ? AbortSignal.any([http.signal, diagnosticLifetime.signal]) : http.signal, method === 'recheck/diagnostics')
         return globalThis.Response.json({ type: 'server-response', rpcId: parsed.data.rpcId, result })
       },
     }))
-    async function dispatch(payload: unknown, signal: AbortSignal) {
+    async function dispatch(payload: unknown, signal: AbortSignal, diagnostic = false) {
       try {
-        if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(k => !['sessionId', 'request'].includes(k))) reject('INVALID_INPUT', 'RPC 请求字段无效。')
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(k => !(diagnostic ? ['sessionId'] : ['sessionId', 'request']).includes(k))) reject('INVALID_INPUT', 'RPC 请求字段无效。')
         const p = payload as { sessionId: unknown; request: unknown }
         const id = SessionId(text(p.sessionId, 'sessionId', 256))
         // 公共 API 恢复普通会话并还原其权限投影；不会发送模型请求。
-        const resolved = await web.sessionController.resolveAgent(id)
-        if ('error' in resolved) reject('SESSION_UNAVAILABLE', '会话不存在、忙碌或由其他宿主占用。', true)
-        signal.throwIfAborted()
-        const env = await environment(web, resolved.agent.session, 'user', { agent: resolved.agent }, signal)
-        return { ok: true, value: await service.execute(env, p.request) }
+        const resolveEnvironment = async () => {
+          const resolved = await web.sessionController.resolveAgent(id)
+          if ('error' in resolved) reject('SESSION_UNAVAILABLE', '会话不存在、忙碌或由其他宿主占用。', true)
+          signal.throwIfAborted()
+          return environment(web, resolved.agent.session, 'user', { agent: resolved.agent }, signal)
+        }
+        if (diagnostic) return { ok: true, value: await diagnostics(web, resolveEnvironment, signal) }
+        return { ok: true, value: await service.execute(await resolveEnvironment(), p.request) }
       } catch (error) {
         if (error instanceof RecheckError) return { ok: true, value: rejected('invalid', error) }
         return { ok: false, error: { code: signal.aborted ? 'CANCELLED' : 'INTERNAL', message: signal.aborted ? '请求已取消。' : 'Recheck 宿主操作失败。', details: {} } }
       }
     }
   })
-  ctx.effect(() => () => service.dispose())
+  ctx.effect(() => () => { diagnosticLifetime.abort(); return service.dispose() })
 }

@@ -8,7 +8,7 @@
 
 Bind project conclusions to evidence files and revisit them when those files change. Recheck contributes one `recheck` tool and a native DSH right sidebar. Card operations require no additional model calls.
 
-Version: **0.1.0-alpha.4**, distributed through npm `alpha` and GitHub Releases. Host requirement: **DeepSeek Harness 0.2.0-rc.2**, Node.js **24**. The UI follows Harness theme tokens and compact controls, with grouped forms and character counters. See [UI acceptance and local installation](docs/15-ui-refresh.md). Other host versions are unverified. The project remains alpha.
+Version: **0.1.0-alpha.5**, distributed through npm `alpha` and GitHub Releases. Adds on-demand diagnostics, installed versus loaded versions, actionable errors and lifecycle regressions; the eight business actions and schema 1 remain unchanged. Verified on Windows with **Harness 0.2.0-rc.2 Web/Desktop** and **0.2.1-alpha.1 Web**, using Node.js **24**. See the [compatibility manifest](compatibility.json) and [alpha.5 acceptance](docs/17-alpha5-acceptance.md). Release CI covers Windows / Ubuntu with both exact host versions; Web validation does not imply other Desktop combinations are verified.
 
 ![Recheck alpha.4 sidebar](docs/assets/recheck-alpha4-main.png)
 
@@ -16,19 +16,19 @@ Version: **0.1.0-alpha.4**, distributed through npm `alpha` and GitHub Releases.
 
 ## Install
 
-The commands below pin alpha.4. See the [UI acceptance notes](docs/15-ui-refresh.md) for upgrade and verification scope.
+The commands below pin alpha.5 with the baseline Harness 0.2.0-rc.2. Consult the [acceptance notes](docs/17-alpha5-acceptance.md) for other verified combinations and rollback. The screenshots above are from alpha.4.
 
 Install the pinned npm version with the matching Web host:
 
 ```sh
-npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.4
+npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.5
 npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
 Download the tgz and SHA-256 checksum from Releases. For Web, run these commands from the download directory with the matching host:
 
 ```sh
-npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add ./dsh-recheck-0.1.0-alpha.4.tgz
+npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add ./dsh-recheck-0.1.0-alpha.5.tgz
 npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
@@ -61,7 +61,9 @@ npm run test:package
 npm pack
 ```
 
-`check` runs Host/Client type checks, build and 29 real FS/Native/Node PTC tests. `test:package` installs a real tgz in an isolated profile and verifies host startup, uninstall/reinstall and unchanged data/history. `npm run test:package -- --web` also runs real Web acceptance. Test data stays in ignored `.integration`. Desktop tests require `--app` or `RECHECK_DESKTOP_APP`.
+`check` runs Host/Client type checks, build and 32 real FS/Native/Node PTC and diagnostics tests. `test:package` installs the actual tgz, runs tests against that host's SDK, toggles the live plugin 20 times, and verifies uninstall/reinstall and unchanged data/history. The 0.2.0-rc.2 combination also checks rollback to alpha.4 and upgrade again. Use `npm run test:package -- --host 0.2.1-alpha.1 --web` for the second host. Test data stays in ignored `.integration`. Desktop tests require `--app` or `RECHECK_DESKTOP_APP`.
+
+The collapsed diagnostics panel reads status on demand. Its copyable summary excludes workspace paths, session identifiers and business content. A permissive session policy does not override filesystem permissions. Host-version support is distinct from platform validation; consult the compatibility manifest.
 
 [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Version management](docs/11-version-management.md) · [Historical acceptance](docs/09-implementation-and-acceptance.md)
 

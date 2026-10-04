@@ -12,6 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-latest, ubuntu-latest]
+        host: ['0.2.0-rc.2', '0.2.1-alpha.1']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
@@ -25,6 +26,6 @@ jobs:
       - if: runner.os == 'Linux'
         run: npx playwright install --with-deps chromium
       - if: runner.os == 'Linux'
-        run: npm run test:package -- --web
+        run: npm run test:package -- --host ${{ matrix.host }} --web
       - if: runner.os == 'Windows'
-        run: npm run test:package
+        run: npm run test:package -- --host ${{ matrix.host }}

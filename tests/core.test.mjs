@@ -7,7 +7,38 @@ import { randomUUID, createHash } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import * as observationPolicy from '@deepseek-ai/dsh-fs-observation-policy'
-import { Recheck } from '../lib/index.js'
+import { Recheck, diagnostics, pluginVersion, guidance } from '../lib/index.js'
+
+test('诊断只读且不泄露业务内容：空存储、只读、损坏、未来 schema、权限错误', async t => {
+  const f = await fixture(t)
+  const inspect = () => diagnostics(f.ctx, async () => f.env, f.env.signal)
+  assert.equal((await inspect()).storage, 'absent')
+  await f.create({ title: 'private-title', claim: 'private-claim' })
+  const before = await f.stored()
+  f.env.policy.mode = 'read-only'
+  const result = await inspect()
+  assert.equal(result.storage, 'valid'); assert.equal(result.access, 'read-only')
+  assert.equal(result.hostPluginVersion, pluginVersion); assert.equal(result.hostPackageVersion, null)
+  assert.equal(result.installedPluginVersion, null); assert.equal(result.profile, null)
+  assert.doesNotMatch(JSON.stringify(result), /private-title|private-claim|test-session|original|a\.txt/)
+  assert.ok(!JSON.stringify(result).includes(f.cwd)); assert.equal(await f.stored(), before)
+  for (const [bytes, code] of [['invalid secret text', 'CORRUPT_STORE'], ['{"schemaVersion":999}', 'UNSUPPORTED_SCHEMA']]) {
+    await writeFile(join(f.cwd, '.dsh/recheck/cards.json'), bytes)
+    assert.equal((await inspect()).reasonCode, code); assert.equal(await f.stored(), bytes)
+  }
+  const denied = await diagnostics(f.ctx, async () => { throw { code: 'FS_SANDBOX_DENIED', message: f.cwd } }, f.env.signal)
+  assert.equal(denied.reasonCode, 'PERMISSION_DENIED'); assert.equal(denied.access, 'unknown')
+  assert.ok(!JSON.stringify(denied).includes(f.cwd))
+  const unknown = await diagnostics(f.ctx, async () => { throw { code: f.cwd, message: 'secret' } }, f.env.signal)
+  assert.equal(unknown.reasonCode, 'IO_ERROR'); assert.doesNotMatch(JSON.stringify(unknown), /secret/)
+  assert.match(guidance('REVISION_CONFLICT'), /保留/); assert.match(guidance('CORRUPT_STORE'), /备份/)
+})
+
+test('诊断遵循取消，不把取消读操作伪装成有效诊断', async t => {
+  const f = await fixture(t), controller = new AbortController()
+  controller.abort()
+  await assert.rejects(diagnostics(f.ctx, async () => ({ ...f.env, signal: controller.signal }), controller.signal), { name: 'AbortError' })
+})
 
 // fixture 的 Node fs 只用于测试布置；被测业务始终调用真实 DSH FileSystem。
 async function fixture(t) {

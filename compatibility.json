@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "pluginVersion": "0.1.0-alpha.5",
+  "storageSchema": 1,
+  "supportedHosts": [
+    "0.2.0-rc.2",
+    "0.2.1-alpha.1"
+  ],
+  "candidates": [],
+  "validation": [
+    {
+      "host": "0.2.0-rc.2",
+      "platform": "win32",
+      "surfaces": [
+        "web",
+        "desktop"
+      ],
+      "status": "verified",
+      "report": "docs/17-alpha5-acceptance.md"
+    },
+    {
+      "host": "0.2.1-alpha.1",
+      "platform": "win32",
+      "surfaces": [
+        "web"
+      ],
+      "status": "verified",
+      "report": "docs/17-alpha5-acceptance.md"
+    },
+    {
+      "host": "0.2.1-alpha.1",
+      "surfaces": [
+        "desktop"
+      ],
+      "status": "unverified"
+    },
+    {
+      "platform": "linux",
+      "surfaces": [
+        "web"
+      ],
+      "status": "ci-gated",
+      "hosts": [
+        "0.2.0-rc.2",
+        "0.2.1-alpha.1"
+      ],
+      "report": "docs/17-alpha5-acceptance.md"
+    }
+  ],
+  "policy": "Only explicitly verified combinations are supported. Web verification does not imply Desktop verification."
+}

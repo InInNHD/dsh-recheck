@@ -8,7 +8,7 @@
 
 给项目结论绑定文件依据，在依据变化后提醒复核。Recheck 提供一个 `recheck` 工具与 DSH 原生右侧栏；卡片操作不需要额外模型调用。
 
-当前版本 **0.1.0-alpha.4**，通过 npm `alpha` 与 GitHub Release 分发。宿主限定 **DeepSeek Harness 0.2.0-rc.2**，Node.js **24**。本次改版采用宿主主题、紧凑布局和分组表单，实际验证范围与本地安装方法见 [UI 改版验收](docs/15-ui-refresh.md)。其他宿主版本未声明兼容，版本保持 alpha。
+当前版本 **0.1.0-alpha.5**，通过 npm `alpha` 与 GitHub Release 分发。新增“版本与诊断”、安装与加载版本对照、可操作的错误说明和生命周期回归；业务操作与 schema 1 保持不变。已验证 Windows 上的 **Harness 0.2.0-rc.2 Web/Desktop** 和 **0.2.1-alpha.1 Web**，Node.js **24**。精确范围见 [兼容清单](compatibility.json) 与 [alpha.5 验收](docs/17-alpha5-acceptance.md)。远端发布 CI 覆盖 Windows / Ubuntu 与两种精确宿主组合；Web 验收不代表其他 Desktop 组合已验证。
 
 ![Recheck alpha.4 主界面](docs/assets/recheck-alpha4-main.png)
 
@@ -16,19 +16,19 @@
 
 ## 安装
 
-以下命令使用固定的 alpha.4 版本。升级与验证范围见 [UI 改版验收](docs/15-ui-refresh.md)。
+以下命令固定使用 alpha.5 与基线宿主 0.2.0-rc.2。其他已验证组合及回退说明见 [alpha.5 安装与回退](docs/17-alpha5-acceptance.md#安装与回退)。上方界面截图来自 alpha.4。
 
-从 Releases 下载 `dsh-recheck-0.1.0-alpha.4.tgz` 和同名 `.sha256` 文件，校验后通过匹配版本宿主安装。普通 Web 用户可从 npm 安装固定版本：
+从 Releases 下载 `dsh-recheck-0.1.0-alpha.5.tgz` 和同名 `.sha256` 文件，校验后通过匹配版本宿主安装。普通 Web 用户可从 npm 安装固定版本：
 
 ```powershell
-npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.4
+npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.5
 npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
 使用下载的 tgz 时，在安装包所在目录运行：
 
 ```powershell
-npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0-alpha.4.tgz'
+npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0-alpha.5.tgz'
 npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
@@ -76,12 +76,16 @@ npm.cmd run test:package
 npm.cmd pack
 ```
 
-`check` 包含 Host/Client 类型检查、两端构建及 29 项真实 FS/Native/Node PTC 测试；`test:package` 在独立配置中安装实际 tgz、启动宿主、卸载重装并验证数据与历史保留。它只操作忽略的 `.integration` 目录。`prepack` 会执行 `check`。
+`check` 包含 Host/Client 类型检查、两端构建及 32 项真实 FS/Native/Node PTC 和诊断测试；`test:package` 在独立配置中安装实际 tgz、运行该宿主的真实 SDK 测试、启停 20 次、卸载重装并验证数据与历史保留；0.2.0-rc.2 还验证回退 alpha.4 再升级。它只操作忽略的 `.integration` 目录。`prepack` 会执行 `check`。
+
+指定宿主：`npm run test:package -- --host 0.2.1-alpha.1 --web`。侧栏“版本与诊断”按需读取状态，可复制不含项目路径和业务内容的摘要；允许写入的策略仍受实际文件权限约束。宿主版本匹配不代替平台验收，未验证组合见兼容清单。
 
 开发试用：`node scripts/install-local.mjs` 安装到独立 `recheck-web` 配置；启动方法见安装指南。额外检查：`npm run benchmark`、`npm run test:package -- --web`。Desktop 验收需显式指定已安装应用：`node scripts/desktop-smoke.mjs --app '你的应用路径'`。
 
 `src/index.ts` 注册宿主与可信会话；`recheck.ts` 实现操作和提交队列；`io.ts` 处理安全读取；`store.ts` 校验与原子存储；`export.ts` 生成安全 Markdown；`client.tsx` 提供原生侧栏。无数据库或后台 watcher。
 
 [贡献说明](CONTRIBUTING.md) · [变更记录](CHANGELOG.md) · [Git 与发布流程](docs/11-version-management.md) · [历史实现验收](docs/09-implementation-and-acceptance.md)
+
+后续开发建议见 [插件生态调研与版本路线图](docs/16-ecosystem-research-and-roadmap.md)（2026-10-04，规划内容不代表已实现）。
 
 旧学习文档与 `learning/` 保留为历史资料，不能用其中示例配置覆盖当前项目。MIT License。

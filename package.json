@@ -1,6 +1,6 @@
 {
   "name": "dsh-recheck",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "description": "Track conclusions and revisit them when evidence files change.",
   "type": "module",
   "main": "lib/index.js",
@@ -23,7 +23,10 @@
     "docs/13-public-release-validation.md",
     "docs/assets/*.png",
     "docs/14-npm-release-validation.md",
-    "docs/15-ui-refresh.md"
+    "docs/15-ui-refresh.md",
+    "compatibility.json",
+    "docs/17-alpha5-acceptance.md",
+    "docs/16-ecosystem-research-and-roadmap.md"
   ],
   "license": "MIT",
   "engines": {
@@ -58,14 +61,14 @@
     "zod": "4.6.5"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "~4.0.4",
-    "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-client-connection": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-fs": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-sandbox": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-sandbox-policy": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-session": "0.2.0-rc.2",
-    "@deepseek-ai/dsh-tools": "0.2.0-rc.2"
+    "@deepseek-ai/cordis": "~4.0.4 || 4.0.5-alpha.1",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-client-connection": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-fs": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-sandbox": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-session": "0.2.0-rc.2 || 0.2.1-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2 || 0.2.1-alpha.1"
   },
   "devDependencies": {
     "@deepseek-ai/dsh": "0.2.0-rc.2",

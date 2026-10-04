@@ -1,6 +1,10 @@
 // 复用 Harness 的颜色、圆角和交互令牌；作用域限定在插件面板内。
 // 显式使用宿主控件的 14px / 22px 尺寸，避免继承容器的大字号。
 export const styles = `
+.recheck .rc-diagnostics { margin: 0 0 16px; padding: 10px 12px; border: 1px solid var(--rc-line); border-radius: 8px; overflow-wrap: anywhere; }
+.recheck .rc-diagnostics summary { cursor: pointer; font-weight: 500; }
+.recheck .rc-diagnostics p { margin: 10px 0; }
+.recheck .rc-diagnostics textarea { margin: 8px 0; font: 12px/1.5 monospace; }
 .recheck {
   --rc-text: var(--dsw-alias-label-primary, #17191d);
   --rc-muted: var(--dsw-alias-label-tertiary, #727780);

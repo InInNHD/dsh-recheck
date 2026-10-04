@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
+import { waitForRecheckReady, verifyDiagnostics } from './diagnostics-smoke.mjs'
 
 // 只在本地专用 DSH 配置中运行；所有数据都是本脚本创建的独立验收项目。
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -48,14 +49,14 @@ async function selectProject(name) {
   await page.waitForFunction(() => document.querySelector('.recheck')?.getAttribute('aria-busy') === 'false')
 }
 try {
-  await page.goto(launchUrl)
+  // 新配置的引导弹窗可能晚于启动动画出现。由真实动作触发处理，避免固定等待漏过弹窗。
   for (const name of ['继续', '稍后配置']) {
-    const modal = page.getByRole('button', { name, exact: true })
-    await modal.waitFor({ timeout: 2500 }).catch(() => {})
-    if (await modal.isVisible()) await modal.click()
+    await page.addLocatorHandler(page.getByRole('button', { name, exact: true }), async button => { await button.click() })
   }
+  await page.goto(launchUrl)
   await rpc('workspace/create', { request: { path: project } })
   await selectProject(projectName)
+  await waitForRecheckReady(page)
   await button('新建卡片').waitFor()
   await page.waitForFunction(() => !document.querySelector('.recheck button')?.disabled)
   assert.ok(sessionId, '侧栏调用必须携带宿主会话身份。')
@@ -64,9 +65,13 @@ try {
   try {
     const denied = await anonymous.request.post(`${origin}/api/recheck/dispatch`, { headers: { Origin: origin }, data: { type: 'client-request', rpcId: randomUUID(), method: 'recheck/dispatch', payload: { sessionId, request: { action: 'list' } } } })
     assert.ok([401, 403].includes(denied.status()), '未认证请求必须被宿主拒绝。')
+    const diagnosticDenied = await anonymous.request.post(`${origin}/api/recheck/diagnostics`, { headers: { Origin: origin }, data: { type: 'client-request', rpcId: randomUUID(), method: 'recheck/diagnostics', payload: { sessionId } } })
+    assert.ok([401, 403].includes(diagnosticDenied.status()), '诊断同样必须经过宿主认证。')
   } finally { await anonymous.close() }
   const spoofed = await rpc('recheck/dispatch', { sessionId, request: { action: 'list', cwd: project } }, true)
   assert.equal(spoofed.status, 'rejected', '网页请求不能自带工作区。')
+  const diagnosticSpoof = await rpc('recheck/diagnostics', { sessionId, cwd: project }, true)
+  assert.equal(diagnosticSpoof.reason.code, 'INVALID_INPUT', '诊断不能指定其他工作区。')
   await button('新建卡片').click()
   await panel.getByLabel('标题（最多 120 字符）').fill('Web 实机验收卡片')
   await panel.getByLabel('结论（最多 2,000 字符）').fill('文件内容保持稳定时仍需人工判断。')
@@ -155,11 +160,44 @@ try {
   await panel.screenshot({ path: join(project, 'web-result.png') })
   if (option('--screenshot')) await panel.screenshot({ path: resolve(option('--screenshot')) })
   const store = JSON.parse(await readFile(join(project, '.dsh/recheck/cards.json'), 'utf8'))
+  await verifyDiagnostics(page, { project })
+  await page.setViewportSize({ width: 1400, height: 950 })
+  // 真实会话切换 20 次，每次只应挂载一个面板和发起一次初始列表读取。
+  let listCalls = 0
+  const countLists = request => { if (request.url().endsWith('/api/recheck/dispatch') && request.postDataJSON()?.payload?.request?.action === 'list') listCalls++ }
+  page.on('request', countLists)
+  for (let i = 0; i < 20; i++) {
+    const before = listCalls
+    await selectProject(i % 2 ? projectName : nameB)
+    assert.equal(await panel.count(), 1)
+    assert.equal(listCalls - before, 1, '切换不应累积重复的列表请求')
+  }
+  page.off('request', countLists)
+  // 保留真实 Host 响应，但让旧会话的刷新响应在切换到 B 后才到达。
+  const oldSession = sessionId
+  let release, seen, delivered
+  const held = new Promise(resolve => { release = resolve }), started = new Promise(resolve => { seen = resolve }), settled = new Promise(resolve => { delivered = resolve })
+  const lateRoute = async route => {
+    if (route.request().postDataJSON()?.payload?.sessionId !== oldSession) return route.continue()
+    const response = await route.fetch(); seen(); await held
+    try { await route.fulfill({ response }) } catch {} finally { delivered() } // 切换主动取消时浏览器可直接丢弃该响应。
+  }
+  await page.route('**/api/recheck/dispatch', lateRoute)
+  try {
+    await button('刷新列表').click(); await started
+    await selectProject(nameB); release(); await settled
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    await button('放弃草稿').click()
+    assert.match(await panel.innerText(), new RegExp(nameB))
+    assert.equal(await button('保留的编辑草稿').count(), 0)
+  } finally { release(); await page.unroute('**/api/recheck/dispatch', lateRoute) }
+  await selectProject(projectName)
   assert.equal(store.cards.length, 1); assert.equal(store.cards[0].archived, false)
   assert.equal(store.cards[0].versions[0].actor.kind, 'user')
   assert.equal(errors.length, 0, errors.join('\n')); assert.equal(modelRequests.length, 0, '卡片操作不应发送模型消息。')
   const report = { passed: true, project, sessionId, checks: ['原生入口与项目绑定', '宿主认证与拒绝伪造工作区', '创建及双状态', '完整文件检查', '主动否定复核', '并发冲突保留草稿', '导出新文件并拒绝覆盖', '归档恢复', '真实只读模式临时检查不写入', '持久检查清除临时显示', '窄栏与键盘焦点', 'UTC及时区展开', 'A/B项目草稿隔离与同项目新会话恢复', '无模型请求及页面异常'], screenshot: join(project, 'web-result.png') }
-  await writeFile(join(root, '.integration/web-smoke-result.json'), JSON.stringify(report, null, 2))
+  report.checks.push('alpha.5 诊断与版本不一致提示', '诊断白名单与窄栏', '20 次真实会话切换无重复列表请求', '迟到响应隔离')
+  await writeFile(option('--report') ?? join(root, '.integration/web-smoke-result.json'), JSON.stringify(report, null, 2))
   console.log(JSON.stringify(report, null, 2))
 } catch (error) {
   await page.screenshot({ path: join(project, 'web-failure.png'), fullPage: true }).catch(() => {})
