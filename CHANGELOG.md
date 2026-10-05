@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.0-alpha.6 — 2026-10-05
+
+- Handle reproduced Windows ReplaceFileW error 1175 with two bounded retries through the same Host FS and original CAS guard; return a controlled WRITE_BUSY response if it persists. Preserve cancellation, concurrent updates, and failures for other error codes.
+
+- Show per-line evidence format errors and actionable Host read failures; preserve inputs and focus the failing field or line. Re-read evidence on save through the existing FS/sandbox boundary and never save partial baselines.
+- Add optional `reason.evidenceIssues` to rejected responses, verified through the real tool output schema; retain the eight actions and storage schema 1.
+- Open current and historical version source sessions through the public workspace navigation service, with visible-catalog checks and cancellation. This opens the recording session, not a particular evidence message.
+- Keep multiline path entry. The available composer file picker uploads attachments and does not provide a suitable project-relative evidence selection API, so no file-picker UI is added.
+- Lock form inputs during submission and guard composition input from accidental saves. Add shared Web/Desktop entry checks, native navigation tests and alpha.5 rollback coverage. See docs/18-alpha6-acceptance.md for exact validation limits.
+
 ## 0.1.0-alpha.5 — 2026-10-04
 
 - Add an authenticated, read-only diagnostics panel with client/Host loaded versions, installed bundle version when available, runtime host package version, session write policy and schema validation status.

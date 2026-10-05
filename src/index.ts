@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
 import { Recheck } from './recheck.js'
 export { Recheck } from './recheck.js'
+export { evidenceIssues, evidenceLines } from './cards.js'
 import { RecheckError, reject, text } from './cards.js'
 import type { Environment } from './io.js'
 import type { Response } from './types.js'
@@ -59,7 +60,7 @@ export const parameters = { oneOf: [
   branch('export', ['cardId', 'includeHistory', 'path'], ['cardId']),
 ] }
 function rejected(action: string, error: RecheckError): Response {
-  return { status: 'rejected', action, reason: { code: error.code, message: error.message, retryable: error.retryable } }
+  return { status: 'rejected', action, reason: { code: error.code, message: error.message, retryable: error.retryable, ...(error.evidenceIssues ? { evidenceIssues: error.evidenceIssues } : {}) } }
 }
 export function apply(ctx: Context): void {
   const service = new Recheck()
@@ -77,6 +78,9 @@ export function apply(ctx: Context): void {
         status: { type: 'string', const: 'rejected', required: true }, action: { type: 'string', required: true },
         reason: { type: 'object', required: true, additionalProperties: false, properties: {
           code: { type: 'string', required: true }, message: { type: 'string', required: true }, retryable: { type: 'boolean', required: true },
+          evidenceIssues: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
+            index: { type: 'integer', required: true }, code: { type: 'string', required: true }, message: { type: 'string', required: true },
+          } } },
         } },
       } },
     ] }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },

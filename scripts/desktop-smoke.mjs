@@ -6,6 +6,7 @@ import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 import { waitForRecheckReady, verifyDiagnostics } from './diagnostics-smoke.mjs'
+import { verifyEvidenceEntry } from './evidence-entry-smoke.mjs'
 
 // 开发验收启动真正安装的应用。仅替代文件夹选择结果，宿主/RPC/文件系统均保持真实。
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -27,6 +28,13 @@ const panel = page.getByRole('region', { name: 'Recheck 结论保鲜盒', exact:
 const button = name => panel.getByRole('button', { name, exact: true })
 async function idle() { await page.waitForFunction(() => document.querySelector('.recheck')?.getAttribute('aria-busy') === 'false') }
 async function saved(name) { await button(name).click(); await panel.getByRole('status').filter({ hasText: /已保存|已写入|已归档|已恢复/ }).waitFor(); await idle() }
+async function openPanel() {
+  const open = page.getByRole('button', { name: '打开右侧边栏', exact: true })
+  await open.waitFor({ timeout: 3000 }).catch(() => {}); if (await open.isVisible()) await open.click()
+  const guide = page.locator('[data-sidebar-right-guide-entry="recheck"]')
+  await guide.waitFor({ timeout: 3000 }).catch(() => {}); if (await guide.isVisible()) await guide.click()
+  await button('新建卡片').waitFor(); await idle()
+}
 try {
   const metadata = await app.evaluate(({ app }) => ({ version: app.getVersion(), name: app.getName(), userData: app.getPath('userData') }))
   assert.equal(metadata.version, '0.2.0-rc.2')
@@ -45,17 +53,14 @@ try {
   await page.getByText(projectName, { exact: true }).first().hover()
   await page.getByRole('button', { name: `在“${projectName}”中新建会话`, exact: true }).click()
   await page.getByRole('button', { name: '选择工作区', exact: true }).filter({ hasText: projectName }).waitFor()
-  const open = page.getByRole('button', { name: '打开右侧边栏', exact: true })
-  await open.waitFor({ timeout: 3000 }).catch(() => {}); if (await open.isVisible()) await open.click()
-  const guide = page.locator('[data-sidebar-right-guide-entry="recheck"]')
-  await guide.waitFor({ timeout: 3000 }).catch(() => {}); if (await guide.isVisible()) await guide.click()
-  await button('新建卡片').waitFor(); await idle()
+  await openPanel()
   await waitForRecheckReady(page)
   assert.match(await panel.innerText(), new RegExp(projectName))
   await button('新建卡片').click()
   await panel.getByLabel('标题（最多 120 字符）').fill('Recheck 本机安装验收（测试）')
   await panel.getByLabel('结论（最多 2,000 字符）').fill('字节变化会提示复核，未变化不能证明结论正确。')
   await panel.getByLabel('依据文件（项目相对路径，每行一个，1–8 个）').fill('evidence.txt')
+  await verifyEvidenceEntry(page, project)
   await saved('保存'); assert.match(await panel.innerText(), /尚未检查\s*·\s*复核意见：尚未复核/)
   await saved('检查依据并保存'); assert.match(await panel.innerText(), /依据未变化\s*·\s*复核意见：尚未复核/)
   await writeFile(join(project, 'evidence.txt'), '修改后的依据\n')
@@ -95,10 +100,30 @@ try {
   assert.equal(store.cards[0].archived, false); assert.equal(errors.length, 0, errors.join('\n'))
   await page.mouse.move(1000, 80); await panel.evaluate(el => { el.scrollTop = 0 })
   await verifyDiagnostics(page, { project, hostVersion: metadata.version, simulateMismatch: false })
+  // 无消息会话会被宿主复用；将测试卡片复制到 B，从 B 打开其真正来源 A。
+  const navigationProject = `${project}-navigation`, navigationName = `${projectName}-navigation`
+  await mkdir(join(navigationProject, '.dsh/recheck'), { recursive: true })
+  await writeFile(join(navigationProject, '.dsh/recheck/cards.json'), await readFile(storePath))
+  await app.evaluate(({ dialog }, path) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] }) }, navigationProject)
+  await page.getByRole('button', { name: '添加工作区', exact: true }).click()
+  await page.getByText(navigationName, { exact: true }).first().hover()
+  await page.getByRole('button', { name: `在“${navigationName}”中新建会话`, exact: true }).click()
+  await page.getByRole('button', { name: '选择工作区', exact: true }).filter({ hasText: navigationName }).waitFor()
+  await openPanel()
+  await panel.getByText(`当前项目：${navigationName}`, { exact: true }).waitFor()
+  await button('Recheck 本机验收完成（测试）').click(); await idle()
+  await button('打开此版本来源会话').click()
+  await page.getByRole('button', { name: '选择工作区', exact: true }).filter({ hasText: projectName }).waitFor()
+  await openPanel()
+  await panel.getByText(`当前项目：${projectName}`, { exact: true }).waitFor()
+  await button('Recheck 本机验收完成（测试）').click(); await idle()
+  assert.equal(errors.length, 0, errors.join('\n'))
   await page.screenshot({ path: join(project, 'desktop-result.png'), fullPage: true })
   const report = { passed: true, metadata, profile, project, checks: ['实际 desktop 配置启用', '安装文件与交付包一致', '原生 Electron 页面与项目绑定', '创建及双状态', '文件未变/变化检查', '主动不确定复核', '外部并发冲突及草稿保留', '导出新文件并拒绝覆盖', '归档恢复及历史保留', 'UTC及时区展开', '列表搜索', '没有页面异常'], dialogSelectionStubbed: true, modelMessagesSent: false, screenshot: join(project, 'desktop-result.png') }
   report.checks.push('alpha.5 真实版本诊断', '诊断白名单与窄栏', '真实命中测试等待启动覆盖层消失')
-  await writeFile(join(root, '.integration/desktop-smoke-result.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2))
+  report.checks.push('alpha.6 逐项错误与焦点定位', '失败保留输入及修正重试', '中文空格路径与 composition 提交保护')
+  report.checks.push('原生来源会话导航')
+  await writeFile(option('--report') ?? join(root, '.integration/desktop-smoke-result.json'), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2))
 } catch (error) {
   await page.screenshot({ path: join(project, 'desktop-failure.png'), fullPage: true }).catch(() => {})
   console.error((await page.locator('body').innerText().catch(() => '')).slice(-7000)); throw error

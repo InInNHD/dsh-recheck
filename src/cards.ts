@@ -1,7 +1,7 @@
-import { LIMITS, type Card, type Freshness, type Request, type Store } from './types.js'
+import { LIMITS, type Card, type Freshness, type Request, type Store, type EvidenceIssue } from './types.js'
 
 export class RecheckError extends Error {
-  constructor(public readonly code: string, message: string, public readonly retryable = false) { super(message) }
+  constructor(public readonly code: string, message: string, public readonly retryable = false, public readonly evidenceIssues?: EvidenceIssue[]) { super(message) }
 }
 export function reject(code: string, message: string, retryable = false): never {
   throw new RecheckError(code, message, retryable)
@@ -31,10 +31,43 @@ export function relativePath(value: unknown, internal = false): string {
   return path
 }
 export function files(value: unknown): string[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > LIMITS.evidence) reject('INVALID_INPUT', '依据文件必须为 1–8 个。')
-  const result = value.map(p => relativePath(p))
-  if (new Set(result).size !== result.length) reject('INVALID_INPUT', '依据路径不能重复。')
-  return result
+  if (!Array.isArray(value)) reject('INVALID_INPUT', '依据文件必须为 1–8 个。')
+  const issues = evidenceIssues(value)
+  if (issues.length) throw new RecheckError(issues[0]!.code, '请修正依据文件输入。', false, issues)
+  return value.map(p => relativePath(p))
+}
+/** 只做格式检查；文件存在、权限与指纹必须在 Host 保存时重新读取。 */
+export function evidenceIssues(values: readonly unknown[]): EvidenceIssue[] {
+  const issues: EvidenceIssue[] = [], seen = new Set<string>()
+  if (!values.length) return [{ index: 0, code: 'INVALID_INPUT', message: '请填写至少一个依据文件。' }]
+  if (values.length > LIMITS.evidence) issues.push({ index: LIMITS.evidence, code: 'INVALID_INPUT', message: '最多填写 8 个依据文件，请减少条目。' })
+  values.slice(0, LIMITS.evidence).forEach((value, index) => {
+    try {
+      const path = relativePath(value)
+      if (seen.has(path)) issues.push({ index, code: 'INVALID_INPUT', message: '与前面的依据路径重复。' })
+      seen.add(path)
+    } catch (error) {
+      if (!(error instanceof RecheckError)) throw error
+      issues.push({ index, code: error.code, message: typeof value === 'string' && !value.trim() ? '这一行为空，请填写路径或删除空行。' : error.message })
+    }
+  })
+  return issues.sort((a, b) => a.index - b.index)
+}
+export function evidenceLines(input: string): string[] {
+  const lines = input.replaceAll('\r\n', '\n').split('\n')
+  // 接受复制文本末尾的一个换行；中间空行必须明确修正，不能悄悄删除。
+  if (lines.length > 1 && lines.at(-1) === '') lines.pop()
+  return lines
+}
+export function evidenceFailure(code: string): { code: string; message: string } {
+  const messages: Record<string, string> = {
+    MISSING: '文件不存在，请核对项目相对路径。', FS_NOT_FOUND: '文件不存在，请核对项目相对路径。',
+    TOO_LARGE: '文件超过 2 MiB 上限，请选择更小的依据文件。', FS_TOO_LARGE: '文件超过读取上限。',
+    FS_PERMISSION_DENIED: '没有读取权限，请核对宿主访问权限。', FS_SANDBOX_DENIED: '宿主沙箱拒绝读取，请核对会话权限。',
+    UNSAFE_PATH: '不能使用符号链接或目录联接。', NOT_REGULAR_FILE: '目标不是普通文件。', INVALID_PATH: '路径中的父级不是目录。',
+    UNSTABLE_FILE: '读取期间文件改变，请稍后重新保存。', DUPLICATE_EVIDENCE: '与另一条依据指向同一个文件。',
+  }
+  return Object.hasOwn(messages, code) ? { code, message: messages[code]! } : { code: 'READ_FAILED', message: '无法完整读取文件，请核对路径和权限后重试。' }
 }
 const fields: Record<string, string[]> = {
   create: ['title', 'claim', 'files', 'note'], list: ['query', 'archived', 'needsAttention', 'freshness'],

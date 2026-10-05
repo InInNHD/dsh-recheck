@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { basename } from 'node:path'
-import { LIMITS, type Card, type CardVersion, type Check, type Evidence, type FileCheck, type Request, type Response } from './types.js'
-import { current, findCard, freshness, needsAttention, parseRequest, reject, RecheckError, summarize, text } from './cards.js'
+import { LIMITS, type Card, type CardVersion, type Check, type Evidence, type EvidenceIssue, type FileCheck, type Request, type Response } from './types.js'
+import { current, evidenceFailure, findCard, freshness, needsAttention, parseRequest, reject, RecheckError, summarize, text } from './cards.js'
 import { errorCode, fileFailure, guardedWrite, now, readEvidence, sha256, target, writable, type Environment } from './io.js'
 import { loadStore, saveStore } from './store.js'
 import { markdown } from './export.js'
@@ -62,7 +62,7 @@ export class Recheck {
       const data = await this.dispatch(env, writeEnv, req)
       return { status: 'ok', action, data }
     } catch (error) {
-      if (error instanceof RecheckError) return { status: 'rejected', action, reason: { code: error.code, message: error.message, retryable: error.retryable } }
+      if (error instanceof RecheckError) return { status: 'rejected', action, reason: { code: error.code, message: error.message, retryable: error.retryable, ...(error.evidenceIssues ? { evidenceIssues: error.evidenceIssues } : {}) } }
       const code = errorCode(error)
       const mapped: Record<string, [string, string, boolean]> = {
         FS_STALE_VERSION: ['REVISION_CONFLICT', '存储被其他操作更新，请重新读取后提交。', true],
@@ -79,18 +79,18 @@ export class Recheck {
   }
   private async capture(env: Environment, paths: string[]): Promise<Evidence[]> {
     const bounded = { ...env, signal: AbortSignal.any([env.signal, AbortSignal.timeout(LIMITS.timeoutMs)]) }
-    const result: Evidence[] = [], keys = new Set<string>()
-    for (const path of paths) {
+    const result: Evidence[] = [], keys = new Set<string>(), issues: EvidenceIssue[] = []
+    for (const [index, path] of paths.entries()) {
       try {
         const snapshot = await readEvidence(bounded, path)
         if (keys.has(snapshot.target.targetKey)) reject('DUPLICATE_EVIDENCE', '多个路径指向同一文件。')
         keys.add(snapshot.target.targetKey); result.push(snapshot.evidence)
       } catch (error) {
         env.signal.throwIfAborted()
-        if (error instanceof RecheckError && error.code === 'DUPLICATE_EVIDENCE') throw error
-        reject('EVIDENCE_UNAVAILABLE', `${path}：${fileFailure(error).reason}；没有保存不完整基线。`, true)
+        issues.push({ index, ...evidenceFailure(errorCode(error)) })
       }
     }
+    if (issues.length) throw new RecheckError(issues.some(i => i.code === 'DUPLICATE_EVIDENCE') ? 'DUPLICATE_EVIDENCE' : 'EVIDENCE_UNAVAILABLE', '依据未完整读取，没有保存；请修正标出的条目。', true, issues)
     return result
   }
   private async dispatch(env: Environment, writeEnv: Environment, req: Request): Promise<unknown> {

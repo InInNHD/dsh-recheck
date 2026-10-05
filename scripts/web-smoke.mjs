@@ -5,6 +5,7 @@ import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import { waitForRecheckReady, verifyDiagnostics } from './diagnostics-smoke.mjs'
+import { verifyEvidenceEntry } from './evidence-entry-smoke.mjs'
 
 // 只在本地专用 DSH 配置中运行；所有数据都是本脚本创建的独立验收项目。
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -36,8 +37,14 @@ const button = name => panel.getByRole('button', { name, exact: true })
 async function savedClick(name) { await button(name).click(); await panel.getByRole('status').filter({ hasText: /已保存|已写入|已归档|已恢复/ }).waitFor() }
 async function checked() { await savedClick('检查依据并保存'); await button('重新读取卡片').waitFor({ state: 'visible' }); await page.waitForFunction(() => document.querySelector('.recheck')?.getAttribute('aria-busy') === 'false') }
 async function selectProject(name) {
-  await page.getByText(name, { exact: true }).first().hover()
-  await page.getByRole('button', { name: `在“${name}”中新建会话`, exact: true }).click()
+  const row = page.getByText(name, { exact: true }).first()
+  const start = page.getByRole('button', { name: `在“${name}”中新建会话`, exact: true })
+  await row.hover()
+  try { await start.click({ timeout: 5000 }) } catch (error) {
+    // 引导处理器点击弹窗后会移动鼠标，重新悬停才能显示宿主的行内按钮。
+    if (await start.isVisible()) throw error
+    await row.hover(); await start.click()
+  }
   await page.getByRole('button', { name: '选择工作区', exact: true }).filter({ hasText: name }).waitFor()
   const open = page.getByRole('button', { name: '打开右侧边栏', exact: true })
   await open.waitFor({ timeout: 2500 }).catch(() => {})
@@ -76,6 +83,7 @@ try {
   await panel.getByLabel('标题（最多 120 字符）').fill('Web 实机验收卡片')
   await panel.getByLabel('结论（最多 2,000 字符）').fill('文件内容保持稳定时仍需人工判断。')
   await panel.getByLabel('依据文件（项目相对路径，每行一个，1–8 个）').fill('evidence.txt')
+  await verifyEvidenceEntry(page, project)
   await savedClick('保存')
   assert.match(await panel.innerText(), /尚未检查.*尚未复核/s)
   await checked(); assert.match(await panel.innerText(), /依据未变化\s*·\s*复核意见：尚未复核/)
@@ -193,10 +201,44 @@ try {
   } finally { release(); await page.unroute('**/api/recheck/dispatch', lateRoute) }
   await selectProject(projectName)
   assert.equal(store.cards.length, 1); assert.equal(store.cards[0].archived, false)
+  // 没有模型消息的会话会被宿主复用。将测试卡片复制到 B，从 B 跳回真正记录它的 A。
+  await mkdir(join(projectB, '.dsh/recheck'), { recursive: true })
+  await writeFile(join(projectB, '.dsh/recheck/cards.json'), await readFile(join(project, '.dsh/recheck/cards.json')))
+  await selectProject(nameB)
+  await button('保留的编辑草稿').click()
+  const sourceSession = store.cards[0].versions.at(-1).actor.sessionId
+  assert.notEqual(sessionId, sourceSession, '必须从另一会话验证真实导航')
+  const fromSession = sessionId
+  try {
+    const archived = await rpc('workspace/archiveSession', { request: { sessionId: sourceSession } })
+    assert.ok(archived.archivedSessionIds.includes(sourceSession))
+    await button('打开此版本来源会话').click()
+    await panel.getByRole('alert').filter({ hasText: '来源会话不存在、已归档或当前不可访问' }).waitFor()
+    assert.equal(sessionId, fromSession, '归档来源必须留在当前项目')
+    await panel.getByText(`当前项目：${nameB}`, { exact: true }).waitFor()
+  } finally { await rpc('workspace/unarchiveSession', { request: { sessionId: sourceSession } }) }
+  const sourceOpened = page.waitForRequest(r => r.url().endsWith('/api/recheck/dispatch') && r.postDataJSON()?.payload?.sessionId === sourceSession && r.postDataJSON()?.payload?.request?.action === 'list')
+  await button('打开此版本来源会话').click(); await sourceOpened
+  await panel.getByText(`当前项目：${projectName}`, { exact: true }).waitFor()
+  await button('保留的编辑草稿').click()
+  // 等详情读取彻底完成后再改 fixture，否则会人为触发正在读取中的 CAS 冲突。
+  await button('重新读取卡片').waitFor()
+  await page.waitForFunction(() => document.querySelector('.recheck')?.getAttribute('aria-busy') === 'false')
+  const dataPath = join(project, '.dsh/recheck/cards.json'), originalStore = await readFile(dataPath, 'utf8')
+  try {
+    const unavailable = JSON.parse(originalStore)
+    unavailable.cards[0].versions.at(-1).actor.sessionId = `session-missing-${randomUUID()}`
+    await writeFile(dataPath, JSON.stringify(unavailable))
+    await button('重新读取卡片').click()
+    await button('打开此版本来源会话').click()
+    await panel.getByRole('alert').filter({ hasText: '来源会话不存在、已归档或当前不可访问' }).waitFor()
+    assert.match(await panel.innerText(), /保留的编辑草稿/)
+  } finally { await writeFile(dataPath, originalStore) }
   assert.equal(store.cards[0].versions[0].actor.kind, 'user')
   assert.equal(errors.length, 0, errors.join('\n')); assert.equal(modelRequests.length, 0, '卡片操作不应发送模型消息。')
   const report = { passed: true, project, sessionId, checks: ['原生入口与项目绑定', '宿主认证与拒绝伪造工作区', '创建及双状态', '完整文件检查', '主动否定复核', '并发冲突保留草稿', '导出新文件并拒绝覆盖', '归档恢复', '真实只读模式临时检查不写入', '持久检查清除临时显示', '窄栏与键盘焦点', 'UTC及时区展开', 'A/B项目草稿隔离与同项目新会话恢复', '无模型请求及页面异常'], screenshot: join(project, 'web-result.png') }
   report.checks.push('alpha.5 诊断与版本不一致提示', '诊断白名单与窄栏', '20 次真实会话切换无重复列表请求', '迟到响应隔离')
+  report.checks.push('alpha.6 逐项错误与焦点定位', '失败保留输入及修正重试', '中文空格路径与 composition 提交保护', '原生来源会话导航与不可用反馈')
   await writeFile(option('--report') ?? join(root, '.integration/web-smoke-result.json'), JSON.stringify(report, null, 2))
   console.log(JSON.stringify(report, null, 2))
 } catch (error) {
