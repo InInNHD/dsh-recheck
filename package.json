@@ -1,6 +1,6 @@
 {
   "name": "dsh-recheck",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "description": "Track conclusions and revisit them when evidence files change.",
   "type": "module",
   "main": "lib/index.js",
@@ -26,7 +26,8 @@
     "docs/15-ui-refresh.md",
     "compatibility.json",
     "docs/17-alpha5-acceptance.md",
-    "docs/16-ecosystem-research-and-roadmap.md"
+    "docs/16-ecosystem-research-and-roadmap.md",
+    "docs/18-alpha6-acceptance.md"
   ],
   "license": "MIT",
   "engines": {
@@ -42,7 +43,8 @@
         "@deepseek-ai/dsh-client-ui-sidebar-right",
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-ui-renderer",
-        "@deepseek-ai/dsh-client-ui-session"
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-client-ui-workspace"
       ]
     }
   },

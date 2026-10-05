@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type { FileSystem, FsTarget, FsObservation, FsWriteIntent } from '@deepseek-ai/dsh-fs'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
@@ -56,7 +57,19 @@ export async function guardedWrite(env: Environment, file: FsTarget, content: st
   if (intent && (intent.kind !== own.kind || (intent.kind === 'replaceIfVersion' && own.kind === 'replaceIfVersion' && intent.version !== own.version)))
     reject('REVISION_CONFLICT', '宿主文件观察已改变，请重新读取后提交。', true)
   env.signal.throwIfAborted()
-  const result = await env.fs.writeText(file, content, own, env.signal, env.policy)
+  let result: Awaited<ReturnType<FileSystem['writeText']>>
+  for (let attempt = 0; ; attempt++) {
+    try { result = await env.fs.writeText(file, content, own, env.signal, env.policy); break }
+    catch (error) {
+      // Win32 1175 表示替换未发布、原文件仍在；只重试这一明确错误。
+      // 每次仍通过宿主 FS 校验同一版本，不绕过 CAS、权限或原子写入。
+      if (own.kind !== 'replaceIfVersion' || typeof error !== 'object' || error === null
+        || !('code' in error) || error.code !== 'EIO' || !('syscall' in error) || error.syscall !== 'ReplaceFileW'
+        || !('win32Code' in error) || error.win32Code !== 1175) throw error
+      if (attempt === 2) reject('WRITE_BUSY', 'Windows 暂时无法替换数据文件，本次未保存。请稍后重新读取后重试。', true)
+      await delay(100 * (attempt + 1), undefined, { signal: env.signal })
+    }
+  }
   // 原子发布完成后不再 throwIfAborted，避免将已保存结果误报为未保存。
   observe(env, file, { kind: 'present', version: result.version })
 }

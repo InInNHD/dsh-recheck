@@ -18,6 +18,7 @@ export const LIMITS = Object.freeze({ title: 120, claim: 2000, note: 4000, evide
   storeBytes: 8 * 1024 * 1024, batchTargets: 200, batchBytes: 64 * 1024 * 1024, timeoutMs: 10_000 })
 
 export interface Actor { kind: 'user' | 'agent'; sessionId: string }
+export interface EvidenceIssue { index: number; code: string; message: string }
 export interface Evidence { path: string; sha256: string; size: number; capturedAt: string }
 export interface FileCheck {
   path: string; status: Exclude<Freshness, 'unchecked'>; observedAt: string
@@ -49,4 +50,4 @@ export type Request =
   | { action: 'archive'; cardId: string; expectedRevision: number; archived: boolean }
   | { action: 'export'; cardId: string; includeHistory?: boolean; path?: string }
 export type Response = { status: 'ok'; action: string; data: any }
-  | { status: 'rejected'; action: string; reason: { code: string; message: string; retryable: boolean } }
+  | { status: 'rejected'; action: string; reason: { code: string; message: string; retryable: boolean; evidenceIssues?: EvidenceIssue[] } }

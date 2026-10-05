@@ -137,6 +137,11 @@ export const styles = `
 .recheck pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 18px; }
 .recheck fieldset { min-width: 0; border: .5px solid var(--rc-line); border-radius: var(--rc-radius); padding: 14px; margin: 12px 0; display: grid; gap: 12px; }
 .recheck legend { font-size: 13px; padding: 0 6px; }
+.recheck fieldset.rc-form-fields { display: block; border: 0; padding: 0; margin: 0; }
+.recheck .rc-file-errors { padding-left: 18px; margin: 8px 0; font-size: 12px; overflow-wrap: anywhere; color: var(--dsw-alias-state-error-primary, #dc3434); }
+.recheck .rc-file-errors:empty { display: none; }
+.recheck .rc-file-errors button { padding: 0; border: 0; background: none; color: inherit; text-decoration: underline; }
+.recheck [aria-invalid=true] { border-color: var(--dsw-alias-state-error-primary, #dc3434); }
 .recheck fieldset label > input:not([type=checkbox]), .recheck fieldset textarea { margin-top: 6px; }
 @container (max-width: 360px) {
   .recheck .rc-header { align-items: flex-start; }

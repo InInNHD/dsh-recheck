@@ -1,32 +1,32 @@
 # 安装、卸载与回退 / Installation
 
-版本：Recheck 0.1.0-alpha.5。宿主：DSH 0.2.0-rc.2，Node.js 24。非官方社区插件。
+版本：Recheck 0.1.0-alpha.6。宿主：DSH 0.2.0-rc.2，Node.js 24。非官方社区插件。
 
-此页对应 alpha.5 版本诊断与兼容更新。基线为 DSH 0.2.0-rc.2；0.2.1-alpha.1 仅通过 Web 验收，Desktop 未验证。精确范围见 [alpha.5 验收](17-alpha5-acceptance.md)。
+此页对应 alpha.6 依据录入与来源导航更新。基线为 DSH 0.2.0-rc.2；0.2.1-alpha.1 仅通过 Web 验收，Desktop 未验证。精确范围见 [alpha.6 验收](18-alpha6-acceptance.md)。
 
 ## npm 安装
 
-Web：`npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.5`。Linux 用 `npx`。Desktop 将下文 bundled CLI 的 add 参数替换为 `dsh-recheck@0.1.0-alpha.5`。预发布使用固定版本或 `dsh-recheck@alpha`；`latest` 可能仍指向旧版，不用于选择本次预发布。
+Web：`npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.6`。Linux 用 `npx`。Desktop 将下文 bundled CLI 的 add 参数替换为 `dsh-recheck@0.1.0-alpha.6`。预发布使用固定版本或 `dsh-recheck@alpha`；`latest` 可能仍指向旧版，不用于选择本次预发布。
 
 ## GitHub Release 安装包
 
-从 https://github.com/InInNHD/dsh-recheck/releases/tag/v0.1.0-alpha.5 下载 tgz 和 `.tgz.sha256`。不要将自动生成的 Source code ZIP 当作预构建插件。
+从 https://github.com/InInNHD/dsh-recheck/releases/tag/v0.1.0-alpha.6 下载 tgz 和 `.tgz.sha256`。不要将自动生成的 Source code ZIP 当作预构建插件。
 
 PowerShell 校验：
 
 ```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath './dsh-recheck-0.1.0-alpha.5.tgz'
-Get-Content -LiteralPath './dsh-recheck-0.1.0-alpha.5.tgz.sha256'
+Get-FileHash -Algorithm SHA256 -LiteralPath './dsh-recheck-0.1.0-alpha.6.tgz'
+Get-Content -LiteralPath './dsh-recheck-0.1.0-alpha.6.tgz.sha256'
 ```
 
-Linux 校验：`sha256sum -c dsh-recheck-0.1.0-alpha.5.tgz.sha256`。
+Linux 校验：`sha256sum -c dsh-recheck-0.1.0-alpha.6.tgz.sha256`。
 
 ## 普通 Web 配置
 
 以下命令使用固定宿主，不依赖旧的全局 dsh 命令。先停止已有 Web 服务；升级前备份 profile 的 package/lock/patch 配置和项目数据。
 
 ```powershell
-npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0-alpha.5.tgz'
+npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0-alpha.6.tgz'
 npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
@@ -45,7 +45,7 @@ npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web rem
 ```powershell
 $recheckDesktopCli = 'C:\Path\To\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd'
 & $recheckDesktopCli --version
-& $recheckDesktopCli plugin --profile desktop add 'C:\Downloads\dsh-recheck-0.1.0-alpha.5.tgz'
+& $recheckDesktopCli plugin --profile desktop add 'C:\Downloads\dsh-recheck-0.1.0-alpha.6.tgz'
 ```
 
 版本须为 0.2.0-rc.2。然后从桌面应用入口启动，选择项目会话并打开原生右侧栏。不能用普通 CLI 启动 Electron 的 desktop profile。

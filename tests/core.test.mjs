@@ -7,7 +7,48 @@ import { randomUUID, createHash } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import * as observationPolicy from '@deepseek-ai/dsh-fs-observation-policy'
-import { Recheck, diagnostics, pluginVersion, guidance } from '../lib/index.js'
+import { Recheck, diagnostics, pluginVersion, guidance, evidenceIssues, evidenceLines } from '../lib/index.js'
+
+test('alpha.6 依据逐行校验：空行、标准化重复、非法路径、数量和粘贴尾换行', async t => {
+  assert.deepEqual(evidenceLines('src/a.txt\r\n中文 文件.txt\r\n'), ['src/a.txt', '中文 文件.txt'])
+  assert.deepEqual(evidenceIssues(['src/a.txt', '', 'src\\a.txt', '../escape']).map(i => i.index), [1, 2, 3])
+  assert.equal(evidenceIssues(Array.from({ length: 9 }, (_, i) => `${i}.txt`)).at(-1).index, 8)
+  assert.deepEqual(evidenceIssues(['中文 文件.txt']), [])
+  const f = await fixture(t)
+  for (const files of [[], ['a.txt', ''], Array(9).fill('a.txt')]) {
+    const result = await f.call({ action: 'create', title: 'title', claim: 'claim', files })
+    assert.equal(result.status, 'rejected'); assert.ok(result.reason.evidenceIssues.length)
+  }
+  await assert.rejects(f.stored(), { code: 'ENOENT' })
+})
+
+test('alpha.6 保存聚合缺失/超限/目录错误，修正后捕获最新内容，编辑失败保留原字节', async t => {
+  const f = await fixture(t)
+  await writeFile(join(f.cwd, 'large.txt'), Buffer.alloc(2 * 1024 * 1024 + 1))
+  await mkdir(join(f.cwd, 'folder'))
+  const request = { action: 'create', title: '保留输入', claim: 'claim', files: ['missing.txt', 'large.txt', 'folder'] }
+  const result = await f.call(request)
+  assert.deepEqual(result.reason.evidenceIssues.map(i => i.code), ['MISSING', 'TOO_LARGE', 'NOT_REGULAR_FILE'])
+  await assert.rejects(f.stored(), { code: 'ENOENT' })
+  await writeFile(join(f.cwd, '中文 文件.txt'), 'new bytes')
+  const card = await f.create({ files: ['中文 文件.txt'] }), before = await f.stored()
+  assert.equal(card.versions[0].evidence[0].sha256, createHash('sha256').update('new bytes').digest('hex'))
+  const edited = await f.call({ action: 'edit', cardId: card.id, expectedRevision: card.revision, files: request.files, note: '变更' })
+  assert.equal(edited.reason.evidenceIssues.length, 3); assert.equal(await f.stored(), before)
+})
+
+test('alpha.6 依据权限错误按行返回，未知底层错误内容和路径不会泄露', async t => {
+  const f = await fixture(t), read = f.fs.readBytes.bind(f.fs)
+  f.fs.readBytes = async (target, ...args) => {
+    if (target.displayPath.endsWith('a.txt')) throw { code: 'FS_PERMISSION_DENIED', message: f.cwd }
+    if (target.displayPath.endsWith('b.txt')) throw { code: f.cwd, message: 'private system error' }
+    return read(target, ...args)
+  }
+  const result = await f.call({ action: 'create', title: 'title', claim: 'claim', files: ['a.txt', 'b.txt'] })
+  assert.deepEqual(result.reason.evidenceIssues.map(i => i.code), ['FS_PERMISSION_DENIED', 'READ_FAILED'])
+  assert.ok(!JSON.stringify(result).includes(f.cwd)); assert.doesNotMatch(JSON.stringify(result), /private system error/)
+  await assert.rejects(f.stored(), { code: 'ENOENT' })
+})
 
 test('诊断只读且不泄露业务内容：空存储、只读、损坏、未来 schema、权限错误', async t => {
   const f = await fixture(t)
@@ -233,6 +274,44 @@ test('实际原子写入故障保留旧存储；不能吞成成功', async t => 
   await assert.rejects(f.call({ action: 'edit', cardId: card.id, expectedRevision: card.revision, title: '不能保存' }), /文件系统操作失败/)
   assert.equal(await f.stored(), before)
 })
+test('Win32 1175 原子替换有限重试：只提交一次，耗尽保留原字节，其他错误不重试', async t => {
+  const f = await fixture(t), card = await f.create()
+  const failure = () => Object.assign(new Error('private Windows path'), { code: 'EIO', syscall: 'ReplaceFileW', win32Code: 1175 })
+  let attempts = 0
+  f.fs.internals.inspectTemp = () => { if (++attempts < 3) throw failure() }
+  const saved = await f.ok({ action: 'edit', cardId: card.id, expectedRevision: card.revision, title: '成功一次' })
+  assert.equal(attempts, 3); assert.equal(saved.revision, card.revision + 1)
+  const before = await f.stored(); attempts = 0
+  f.fs.internals.inspectTemp = () => { attempts++; throw failure() }
+  const result = await f.call({ action: 'archive', cardId: card.id, expectedRevision: saved.revision, archived: true })
+  assert.equal(result.reason.code, 'WRITE_BUSY'); assert.equal(result.reason.retryable, true)
+  assert.doesNotMatch(JSON.stringify(result), /private Windows path/)
+  assert.equal(attempts, 3); assert.equal(await f.stored(), before)
+  attempts = 0
+  f.fs.internals.inspectTemp = () => { attempts++; throw Object.assign(failure(), { win32Code: 1176 }) }
+  await assert.rejects(f.call({ action: 'archive', cardId: card.id, expectedRevision: saved.revision, archived: true }), /文件系统操作失败/)
+  assert.equal(attempts, 1); assert.equal(await f.stored(), before)
+})
+
+test('Win32 1175 重试仍拒绝外部修改并响应取消', async t => {
+  const failure = () => Object.assign(new Error('test replace failure'), { code: 'EIO', syscall: 'ReplaceFileW', win32Code: 1175 })
+  const f = await fixture(t), card = await f.create()
+  let external, attempts = 0
+  f.fs.internals.inspectTemp = async () => {
+    attempts++
+    const store = JSON.parse(await f.stored()); store.cards[0].title = '外部变更'; store.cards[0].revision++; store.storeRevision++
+    external = JSON.stringify(store); await writeFile(join(f.cwd, '.dsh/recheck/cards.json'), external)
+    throw failure()
+  }
+  await rejection(f, { action: 'edit', cardId: card.id, expectedRevision: card.revision, title: '不能覆盖' }, 'REVISION_CONFLICT')
+  assert.equal(attempts, 1); assert.equal(await f.stored(), external)
+  const other = await fixture(t), original = await other.create(), before = await other.stored(), controller = new AbortController()
+  other.env.signal = controller.signal; attempts = 0
+  other.fs.internals.inspectTemp = () => { attempts++; controller.abort(); throw failure() }
+  await rejection(other, { action: 'archive', cardId: original.id, expectedRevision: original.revision, archived: true }, 'CANCELLED')
+  assert.equal(attempts, 1); assert.equal(await other.stored(), before)
+})
+
 test('Markdown 对恶意标题和闭合围栏保持文字语义，导出不包含主机根目录', async t => {
   const f = await fixture(t), card = await f.create({ title: '<img src=x onerror=alert(1)>', claim: '```\n<script>alert(1)</script>\n```', note: '``````\n恶意围栏' })
   const output = (await f.ok({ action: 'export', cardId: card.id })).markdown

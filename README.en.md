@@ -8,7 +8,7 @@
 
 Bind project conclusions to evidence files and revisit them when those files change. Recheck contributes one `recheck` tool and a native DSH right sidebar. Card operations require no additional model calls.
 
-Version: **0.1.0-alpha.5**, distributed through npm `alpha` and GitHub Releases. Adds on-demand diagnostics, installed versus loaded versions, actionable errors and lifecycle regressions; the eight business actions and schema 1 remain unchanged. Verified on Windows with **Harness 0.2.0-rc.2 Web/Desktop** and **0.2.1-alpha.1 Web**, using Node.js **24**. See the [compatibility manifest](compatibility.json) and [alpha.5 acceptance](docs/17-alpha5-acceptance.md). Release CI covers Windows / Ubuntu with both exact host versions; Web validation does not imply other Desktop combinations are verified.
+Version: **0.1.0-alpha.6**, distributed through npm `alpha` and GitHub Releases. Adds per-line evidence feedback, failure focus and native source-session navigation. The eight business actions and schema 1 remain unchanged. See [alpha.6 scope and validation](docs/18-alpha6-acceptance.md) and the [compatibility manifest](compatibility.json). Verified on Windows with Harness 0.2.0-rc.2 Web/Desktop and 0.2.1-alpha.1 Web. Release CI covers Windows/Ubuntu and both exact hosts. Web validation does not imply other Desktop combinations are verified.
 
 ![Recheck alpha.4 sidebar](docs/assets/recheck-alpha4-main.png)
 
@@ -16,19 +16,19 @@ Version: **0.1.0-alpha.5**, distributed through npm `alpha` and GitHub Releases.
 
 ## Install
 
-The commands below pin alpha.5 with the baseline Harness 0.2.0-rc.2. Consult the [acceptance notes](docs/17-alpha5-acceptance.md) for other verified combinations and rollback. The screenshots above are from alpha.4.
+The commands below pin alpha.6 with the baseline Harness 0.2.0-rc.2. Consult the [acceptance notes](docs/18-alpha6-acceptance.md) for other verified combinations and rollback. The screenshots above are from alpha.4.
 
 Install the pinned npm version with the matching Web host:
 
 ```sh
-npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.5
+npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.6
 npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
 Download the tgz and SHA-256 checksum from Releases. For Web, run these commands from the download directory with the matching host:
 
 ```sh
-npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add ./dsh-recheck-0.1.0-alpha.5.tgz
+npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add ./dsh-recheck-0.1.0-alpha.6.tgz
 npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
@@ -61,7 +61,7 @@ npm run test:package
 npm pack
 ```
 
-`check` runs Host/Client type checks, build and 32 real FS/Native/Node PTC and diagnostics tests. `test:package` installs the actual tgz, runs tests against that host's SDK, toggles the live plugin 20 times, and verifies uninstall/reinstall and unchanged data/history. The 0.2.0-rc.2 combination also checks rollback to alpha.4 and upgrade again. Use `npm run test:package -- --host 0.2.1-alpha.1 --web` for the second host. Test data stays in ignored `.integration`. Desktop tests require `--app` or `RECHECK_DESKTOP_APP`.
+`check` runs Host/Client type checks, build and 37 real FS/Native/Node PTC, diagnostics and evidence-feedback tests. `test:package` installs the actual tgz, runs tests against that host's SDK, toggles the live plugin 20 times, and verifies uninstall/reinstall, rollback to alpha.5, upgrade again and unchanged data/history. Use `npm run test:package -- --host 0.2.1-alpha.1 --web` for the second host. Test data stays in ignored `.integration`. Desktop tests require `--app` or `RECHECK_DESKTOP_APP`.
 
 The collapsed diagnostics panel reads status on demand. Its copyable summary excludes workspace paths, session identifiers and business content. A permissive session policy does not override filesystem permissions. Host-version support is distinct from platform validation; consult the compatibility manifest.
 

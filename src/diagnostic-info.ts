@@ -26,6 +26,7 @@ export function guidance(code: string): string {
     SESSION_UNAVAILABLE: '确认会话仍存在且可访问，稍后刷新；不要同时用多个 Host 写同一项目。',
     UNSUPPORTED_HOST: '使用兼容清单中的宿主组合，并完全重启对应的客户端。',
     CANCELLED: '先刷新确认实际保存结果，再决定是否重试。',
+    WRITE_BUSY: '重新读取卡片确认状态后再提交；若持续失败，请保留项目数据并反馈诊断。',
     UNLOADED: '插件已停用，请重新启用后刷新；如刚升级，请完全重启客户端。',
   }
   return advice[code] ?? '核对提示后重试；持续失败时可展开“版本与诊断”，复制诊断摘要反馈。'

@@ -5,8 +5,10 @@ import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
-import type { Assessment, Card, Check, Freshness, Request, Response } from './types.js'
-import { freshness, current } from './cards.js'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { LIMITS, type Assessment, type Card, type Check, type EvidenceIssue, type Freshness, type Request, type Response } from './types.js'
+import { freshness, current, evidenceIssues, evidenceLines, relativePath, text } from './cards.js'
 import { styles } from './client-styles.js'
 import { pluginVersion, supportedHosts, guidance, type DiagnosticInfo } from './diagnostic-info.js'
 
@@ -40,7 +42,7 @@ type Summary = { cardId: string; versionId: string; title: string; revision: num
 type Listing = { workspace: { id: string; name: string; writable: boolean }; counts: { active: number; archived: number; total: number; needsAttention: number }; cards: Summary[] }
 type Form = { mode: 'create' | 'edit' | 'review'; cardId?: string; expectedRevision?: number; checkId?: string;
   title: string; claim: string; files: string; note: string; assessment: '' | Exclude<Assessment, 'unreviewed'> }
-type Props = { sessionId: string; call: (request: Request, signal: AbortSignal) => Promise<Response>; diagnose: (signal: AbortSignal) => Promise<DiagnosticInfo> }
+type Props = { sessionId: string; call: (request: Request, signal: AbortSignal) => Promise<Response>; diagnose: (signal: AbortSignal) => Promise<DiagnosticInfo>; navigate: (id: string, signal: AbortSignal) => Promise<void> }
 // 草稿只保存在本次客户端内存中，以宿主返回的项目身份隔离。
 const drafts = new Map<string, Form>()
 function Stamp({ value }: { value: string }) {
@@ -67,10 +69,23 @@ function Panel(props: Props) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('')
   const [diagnostic, setDiagnostic] = useState<DiagnosticInfo>(), [diagnosticText, setDiagnosticText] = useState('')
   const running = useRef(false)
+  const [fileErrors, setFileErrors] = useState<EvidenceIssue[]>([])
+  const formElement = useRef<HTMLFormElement>(null), composing = useRef(false)
+  const invalidField = useRef<{ name: string; index?: number }>()
   const requests = useRef(new Set<AbortController>()), mounted = useRef(true), workspace = useRef<string>()
   const focusError = useRef<HTMLParagraphElement>(null)
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; for (const request of requests.current) request.abort() } }, [])
-  useEffect(() => { if (error) focusError.current?.focus() }, [error])
+  function focusField(name: string, index?: number) {
+    const control = formElement.current?.elements.namedItem(name) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null
+    if (!control) { focusError.current?.focus(); return }
+    control.focus()
+    if (name === 'files' && index !== undefined && control instanceof HTMLTextAreaElement) {
+      const lines = control.value.split('\n'), start = lines.slice(0, index).reduce((n, line) => n + line.length + 1, 0)
+      control.setSelectionRange(start, start + (lines[index]?.length ?? 0))
+    }
+  }
+  useEffect(() => { if (error && !busy) { const field = invalidField.current; field ? focusField(field.name, field.index) : focusError.current?.focus() } }, [error, busy])
+  useEffect(() => { setFileErrors([]) }, [form?.files, form?.mode])
   useEffect(() => {
     if (workspace.current) { if (form) drafts.set(workspace.current, form); else drafts.delete(workspace.current) }
   }, [form])
@@ -80,7 +95,12 @@ function Panel(props: Props) {
       const result = await props.call(request, controller.signal)
       controller.signal.throwIfAborted()
       if (!mounted.current) throw new DOMException('会话已切换', 'AbortError')
-      if (result.status === 'rejected') throw new Error(`${result.reason.message}（${result.reason.code}） ${guidance(result.reason.code)}`)
+      if (result.status === 'rejected') {
+        if (result.reason.evidenceIssues?.length) {
+          setFileErrors(result.reason.evidenceIssues); invalidField.current = { name: 'files', index: result.reason.evidenceIssues[0]!.index }
+        }
+        throw new Error(`${result.reason.message}（${result.reason.code}） ${guidance(result.reason.code)}`)
+      }
       return result.data
     } finally { requests.current.delete(controller) }
   }
@@ -97,6 +117,7 @@ function Panel(props: Props) {
   async function run(fn: () => Promise<void>) {
     if (running.current) return
     running.current = true
+    invalidField.current = undefined
     setBusy(true); setError(''); setMessage('')
     try { await fn() } catch (e) {
       if (mounted.current && !(e instanceof Error && e.name === 'AbortError')) setError(e instanceof Error ? e.message : '操作失败。')
@@ -119,6 +140,7 @@ function Panel(props: Props) {
   const observed = card && temporary?.versionId === current(card).id ? temporary : card?.latestCheck
   const reviewAllowed = canWrite && card && !card.archived && card.latestCheck?.checkId
     && card.latestCheck.files.every(f => f.status === 'changed' || f.status === 'unchanged')
+  const displayedFileErrors = fileErrors.length ? fileErrors : form?.files ? evidenceIssues(evidenceLines(form.files)) : []
   const visible = list?.cards.map(c => {
     const candidate = temporaryBatch[c.cardId]
     const observed = candidate?.versionId === c.versionId ? candidate : undefined
@@ -159,17 +181,33 @@ function Panel(props: Props) {
   async function submit() {
     if (!form) return
     const f = form
-    const files = f.files.split('\n').map(s => s.trim()).filter(Boolean)
+    function validate(name: string, value: string, label: string, limit: number, optional = false) {
+      try { text(value, label, limit, optional) } catch (error) { invalidField.current = { name }; throw error }
+    }
+    let files: string[] = []
+    if (f.mode !== 'review') {
+      validate('title', f.title, '标题', LIMITS.title); validate('claim', f.claim, '结论', LIMITS.claim)
+      const lines = evidenceLines(f.files), issues = evidenceIssues(lines)
+      setFileErrors(issues)
+      if (issues.length) { invalidField.current = { name: 'files', index: issues[0]!.index }; throw new Error('请修正依据文件中标出的条目，所有输入已保留。') }
+      files = lines.map(path => relativePath(path))
+    }
+    const changed = f.mode === 'edit' && card && (f.claim.trim() !== current(card).claim || JSON.stringify(files) !== JSON.stringify(current(card).evidence.map(e => e.path)))
+    validate('note', f.note, f.mode === 'review' ? '复核说明' : '说明', LIMITS.note, f.mode !== 'review' && !changed)
     let req: Request
     if (f.mode === 'create') req = { action: 'create', title: f.title, claim: f.claim, files, note: f.note }
     else if (f.mode === 'edit') req = { action: 'edit', cardId: f.cardId!, expectedRevision: f.expectedRevision!, title: f.title, claim: f.claim, files, note: f.note }
     else {
-      if (!f.assessment) throw new Error('请主动选择复核意见。')
+      if (!f.assessment) { invalidField.current = { name: 'assessment' }; throw new Error('请主动选择复核意见。') }
       req = { action: 'review', cardId: f.cardId!, expectedRevision: f.expectedRevision!, checkId: f.checkId!, assessment: f.assessment, note: f.note }
     }
     const value = await call(req)
     setCard(value); setForm(undefined); clearTemporary(value.id); setPreview(''); await refresh()
     setMessage('已保存。')
+  }
+  async function navigate(id: string) {
+    const controller = new AbortController(); requests.current.add(controller)
+    try { await props.navigate(id, controller.signal) } finally { requests.current.delete(controller) }
   }
   async function exportCard(path?: string) {
     const value = await call({ action: 'export', cardId: card!.id, includeHistory: fullHistory, ...(path ? { path } : {}) })
@@ -210,7 +248,9 @@ function Panel(props: Props) {
     <p className="rc-notice" role="alert" tabIndex={-1} ref={focusError} hidden={!error}>{error}</p>
     <p className="rc-notice" role="status" aria-live="polite">{message}</p>
     {busy && <button className="rc-cancel" onClick={() => { for (const request of requests.current) request.abort(); setMessage('取消已发出；如果提交已完成，请刷新确认实际保存结果。') }}>取消当前操作</button>}
-    {form ? <form onSubmit={e => { e.preventDefault(); void run(submit) }}>
+    {form ? <form ref={formElement} noValidate onCompositionStart={() => { composing.current = true }} onCompositionEnd={() => { composing.current = false }}
+      onKeyDown={e => { if (e.key === 'Enter' && (e.nativeEvent.isComposing || e.keyCode === 229)) e.preventDefault() }}
+      onSubmit={e => { e.preventDefault(); if (!composing.current) void run(submit) }}><fieldset className="rc-form-fields" disabled={busy}>
       <div className="rc-form-heading"><h3>{form.mode === 'create' ? '新建卡片' : form.mode === 'edit' ? '编辑卡片' : '记录复核'}</h3>
         <p className="rc-muted">{form.mode === 'review' ? '阅读依据后，记录你对这条结论的判断。' : '收藏一条结论，绑定下次需要检查的文件。'}</p></div>
       <div className="rc-draft"><Icon name="info" /><p>草稿仅保存在本客户端内存中，切换会话可恢复；刷新或关闭会丢失。</p></div>
@@ -222,30 +262,33 @@ function Panel(props: Props) {
       {form.mode !== 'review' ? <>
         <section className="rc-form-section" aria-label="基本信息"><h4>基本信息</h4>
           <div className="rc-field"><div className="rc-field-head"><label htmlFor={`${fieldId}-title`}>标题<span className="rc-required" aria-hidden="true">*</span></label><Counter value={form.title} limit={120} /></div>
-            <input id={`${fieldId}-title`} aria-label="标题（最多 120 字符）" value={form.title} onChange={e => change({ title: e.target.value })} required placeholder="例如：重试不会重复扣款" /></div>
+            <input name="title" id={`${fieldId}-title`} aria-label="标题（最多 120 字符）" value={form.title} onChange={e => change({ title: e.target.value })} required placeholder="例如：重试不会重复扣款" /></div>
           <div className="rc-field"><div className="rc-field-head"><label htmlFor={`${fieldId}-claim`}>结论<span className="rc-required" aria-hidden="true">*</span></label><Counter value={form.claim} limit={2000} /></div>
-            <textarea id={`${fieldId}-claim`} aria-label="结论（最多 2,000 字符）" aria-describedby={`${fieldId}-claim-help`} value={form.claim} onChange={e => change({ claim: e.target.value })} required rows={4} placeholder="写下明确、可复核的项目结论…" />
+            <textarea name="claim" id={`${fieldId}-claim`} aria-label="结论（最多 2,000 字符）" aria-describedby={`${fieldId}-claim-help`} value={form.claim} onChange={e => change({ claim: e.target.value })} required rows={4} placeholder="写下明确、可复核的项目结论…" />
             <p className="rc-muted" id={`${fieldId}-claim-help`}>写清适用条件，方便日后结合依据重新判断。</p></div>
         </section>
         <section className="rc-form-section" aria-label="依据文件"><h4>依据文件<span className="rc-required" aria-hidden="true">*</span></h4>
-          <textarea className="rc-file-input" aria-label="依据文件（项目相对路径，每行一个，1–8 个）" aria-describedby={`${fieldId}-files-help`} value={form.files} onChange={e => change({ files: e.target.value })} required rows={3} placeholder={'src/payment.ts\ntests/retry.test.ts'} />
+          <textarea name="files" className="rc-file-input" aria-label="依据文件（项目相对路径，每行一个，1–8 个）" aria-invalid={displayedFileErrors.length > 0} aria-describedby={`${fieldId}-files-help ${fieldId}-files-errors`} value={form.files} onChange={e => change({ files: e.target.value })} required rows={3} placeholder={'src/payment.ts\ntests/retry.test.ts'} />
           <p className="rc-muted" id={`${fieldId}-files-help`}>项目相对路径，每行一个，需填写 1–8 个文件。保存时捕获内容指纹。</p>
+          <ul className="rc-file-errors" id={`${fieldId}-files-errors`} aria-label="依据逐项反馈">{displayedFileErrors.map(issue => <li key={`${issue.index}-${issue.code}`}><button type="button" onClick={() => focusField('files', issue.index)}>第 {issue.index + 1} 行</button>：{issue.message}</li>)}</ul>
+          <details><summary>如何填写依据路径</summary><p className="rc-muted">从项目根目录开始填写，例如 src/支付 重试.ts；可逐行粘贴，删除中间空行。路径格式通过不代表文件可读，保存时仍会重新读取完整内容。当前宿主的附件上传入口不用于选择项目依据。</p></details>
         </section>
         {form.mode === 'edit' && <p className="rc-notice">仅改标题保留原意见。修改结论或依据会建立新版本，重置意见与检查；变更说明必填。</p>}
       </> : <>
         <p className="rc-notice">将记录为用户复核。引用检查：{form.checkId}；revision：{form.expectedRevision}。<br />观察时间：{stamp(card?.latestCheck?.observedAt)} · 依据 {card ? current(card).evidence.length : '—'} 个。保存前将重新读取依据。</p>
-        <section className="rc-form-section"><label>复核意见<select required value={form.assessment} onChange={e => change({ assessment: e.target.value as Form['assessment'] })}>
+        {fileErrors.length > 0 && <ul className="rc-file-errors">{fileErrors.map(issue => <li key={issue.index}>第 {issue.index + 1} 个依据{card ? `（${current(card).evidence[issue.index]?.path ?? ''}）` : ''}：{issue.message}</li>)}</ul>}
+        <section className="rc-form-section"><label>复核意见<select name="assessment" required value={form.assessment} onChange={e => change({ assessment: e.target.value as Form['assessment'] })}>
           <option value="">请选择…</option><option value="supported">支持</option><option value="refuted">否定</option><option value="uncertain">不确定</option>
         </select></label></section>
       </>}
       <section className="rc-form-section"><div className="rc-field-head"><label htmlFor={`${fieldId}-note`}>{form.mode === 'create' ? '补充说明（可选）' : form.mode === 'edit' ? '变更说明' : '复核说明（必填）'}</label><Counter value={form.note} limit={4000} /></div>
-        <textarea id={`${fieldId}-note`} aria-label={form.mode === 'create' ? '初始说明（可选）' : form.mode === 'edit' ? '变更说明' : '复核说明（必填）'} value={form.note} onChange={e => change({ note: e.target.value })} required={form.mode === 'review'} rows={3} placeholder={form.mode === 'create' ? '记录背景、适用范围或待验证的问题…' : '说明本次变更或判断的理由…'} />
+        <textarea name="note" id={`${fieldId}-note`} aria-label={form.mode === 'create' ? '初始说明（可选）' : form.mode === 'edit' ? '变更说明' : '复核说明（必填）'} value={form.note} onChange={e => change({ note: e.target.value })} required={form.mode === 'review'} rows={3} placeholder={form.mode === 'create' ? '记录背景、适用范围或待验证的问题…' : '说明本次变更或判断的理由…'} />
       </section>
       <footer className="rc-form-footer"><p className="rc-muted rc-footer-note">保存失败或发生冲突时，输入会保留。</p><div className="rc-actions">
         <button type="button" disabled={busy} onClick={() => setForm(undefined)}>放弃草稿</button>
         <button className="rc-primary" type="submit" disabled={busy || !canWrite}>保存</button>
       </div></footer>
-    </form> : card ? <div className="rc-detail">
+    </fieldset></form> : card ? <div className="rc-detail">
       <div className="rc-actions"><button className="rc-ghost" disabled={busy} onClick={() => { setCard(undefined); setTemporary(undefined); setPreview('') }}>← 返回列表</button>
       <button disabled={busy} onClick={() => void run(() => open(card.id))}>重新读取卡片</button>
       </div>
@@ -255,6 +298,8 @@ function Panel(props: Props) {
       <p>当前版本：{current(card).id}<br />revision：{card.revision}<br />上次观察：{stamp(observed?.observedAt)}</p>
       <p className="rc-claim">{current(card).claim}</p>
       <p>意见来源：{current(card).actor.kind === 'user' ? '用户' : 'Agent'} · {stamp(current(card).createdAt)}<br />会话：{current(card).actor.sessionId}</p>
+      <button disabled={busy} onClick={() => void run(() => navigate(current(card).actor.sessionId))}>打开此版本来源会话</button>
+      <p className="rc-muted">定位到记录此版本的会话，不定位到原始论据消息。仅修改标题不会改变版本来源。</p>
       <p style={{ whiteSpace: 'pre-wrap' }}>说明：{current(card).note || '（无）'}</p>
       <h4>依据文件</h4>
       {current(card).evidence.map(e => {
@@ -274,6 +319,7 @@ function Panel(props: Props) {
       <p>{copy.limitation}</p>
       <details><summary>历史版本（{card.versions.length}）</summary>{card.versions.map((v, i) => <article key={v.id}>
         <h4>v{i + 1} · {copy.opinion[v.assessment]} · {v.reason}</h4><p>{v.id}<br />{v.actor.kind} · {stamp(v.createdAt)}<br />来源会话：{v.actor.sessionId}</p>
+        <button disabled={busy} onClick={() => void run(() => navigate(v.actor.sessionId))}>打开 v{i + 1} 来源会话</button>
         <p style={{ whiteSpace: 'pre-wrap' }}>{v.claim}</p><p style={{ whiteSpace: 'pre-wrap' }}>{v.note}</p>
         {v.evidence.map(e => <pre key={e.path}>{e.path}{'\n'}{e.sha256}{'\n'}{e.size} 字节 · {stamp(e.capturedAt)}</pre>)}
       </article>)}</details>
@@ -328,6 +374,17 @@ export function apply(ctx: Context): void {
     guide: [{ id: 'recheck', order: 80, title: () => 'Recheck · 结论保鲜盒', description: () => '收藏项目结论，检查依据变化并记录复核意见。' }] }))
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({ name: 'sidebar.right.pane.tab', key: 'dsh-recheck',
     inject: (sessionId): Props => ({ sessionId,
+      navigate: async (id, signal) => {
+        const navigation = ctx.get('uiWorkspace'), sessions = ctx.get('sessions'), workspaces = ctx.get('workspaces')
+        if (!navigation || !sessions || !workspaces) throw new Error('当前宿主未提供来源会话导航，可在宿主会话列表中查找。')
+        try { await sessions.refresh() } catch { throw new Error('无法读取宿主会话列表，请检查连接后重试。') }
+        signal.throwIfAborted()
+        // 会话目录包含归档项；归档状态必须取自宿主持续同步的工作区快照。
+        const snapshot = workspaces.list.getSnapshot()
+        if (snapshot.phase !== 'ready' || snapshot.state !== 'idle') throw new Error('宿主会话状态尚未就绪，请稍后重试。当前页面已保留。')
+        if (snapshot.archivedSessionIds.some(value => value === id) || !sessions.list.getSnapshot().ids.some(value => value === id)) throw new Error('来源会话不存在、已归档或当前不可访问。当前页面已保留。')
+        navigation.openSession(id as SessionId)
+      },
       diagnose: async signal => {
         const result = await connection.rpc.call('/api', 'recheck/diagnostics', { sessionId }, signal)
         if (!result.ok) throw new Error('诊断连接失败。确认 Host 已升级到 alpha.5，再完全重启客户端。')

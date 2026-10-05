@@ -134,8 +134,8 @@ try {
   const restored = await recheck({ action: 'get', cardId: card.id, includeHistory: true })
   assert.deepEqual(restored.versions, reviewed.versions); assert.equal(restored.revision, reviewed.revision)
   assert.equal(restored.latestCheck.checkId, reviewed.latestCheck.checkId); assert.equal(hash(await readFile(dataPath)), before)
-  if (hostVersion === '0.2.0-rc.2') {
-    await stop(); npm(['install', ...flags, 'dsh-recheck@0.1.0-alpha.4'])
+  {
+    await stop(); npm(['install', ...flags, 'dsh-recheck@0.1.0-alpha.5'])
     await start()
     const rollback = await recheck({ action: 'get', cardId: card.id, includeHistory: true })
     assert.deepEqual(rollback.versions, reviewed.versions); assert.equal(hash(await readFile(dataPath)), before)
@@ -149,8 +149,8 @@ try {
     assert.equal(code, 0, 'Real Web smoke must pass')
   }
   const report = { passed: true, os: process.platform, node: process.version, plugin: manifest.version, dsh: hostVersion, sha256: hash(await readFile(tarball)), packagedInstallation: true, absentAfterUninstall: true,
-    activeAfterReinstall: true, historyPreserved: true, storeBytesPreserved: true, rollbackAlpha4: hostVersion === '0.2.0-rc.2', liveToggleCycles: 20, web: process.argv.includes('--web'), coexist: process.argv.includes('--coexist') ? 'dsh-boot-animation@0.4.2' : null, modelMessagesSent: false }
-  await writeFile(join(root, `.integration/package-smoke-${process.platform}-${hostVersion}-result.json`), JSON.stringify(report, null, 2) + '\n')
+    activeAfterReinstall: true, historyPreserved: true, storeBytesPreserved: true, rollbackVersion: '0.1.0-alpha.5', liveToggleCycles: 20, web: process.argv.includes('--web'), coexist: process.argv.includes('--coexist') ? 'dsh-boot-animation@0.4.2' : null, modelMessagesSent: false }
+  await writeFile(join(root, `.integration/package-smoke-${manifest.version}-${process.platform}-${hostVersion}-result.json`), JSON.stringify(report, null, 2) + '\n')
   console.log(JSON.stringify(report, null, 2))
 } catch (error) {
   console.error(error); process.exitCode = 1
