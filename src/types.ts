@@ -13,6 +13,9 @@ export type Assessment =
   | 'refuted'
   | 'uncertain'
 
+export type CardSort = 'attention' | 'checked' | 'updated'
+export interface CheckTarget { cardId: string; expectedRevision: number }
+
 export const LIMITS = Object.freeze({ title: 120, claim: 2000, note: 4000, evidence: 8,
   active: 100, cards: 200, versions: 20, fileBytes: 2 * 1024 * 1024,
   storeBytes: 8 * 1024 * 1024, batchTargets: 200, batchBytes: 64 * 1024 * 1024, timeoutMs: 10_000 })
@@ -41,11 +44,12 @@ export interface Card {
 export interface Store { schemaVersion: 1; storeRevision: number; cards: Card[] }
 export type Request =
   | { action: 'create'; title: string; claim: string; files: string[]; note?: string }
-  | { action: 'list'; query?: string; archived?: boolean; needsAttention?: boolean; freshness?: Freshness }
+  | { action: 'list'; query?: string; archived?: boolean; needsAttention?: boolean; freshness?: Freshness; assessment?: Assessment; sort?: CardSort }
   | { action: 'get'; cardId: string; includeHistory?: boolean }
   | { action: 'edit'; cardId: string; expectedRevision: number; title?: string; claim?: string; files?: string[]; note?: string }
   | { action: 'check'; scope: 'card'; cardId: string; expectedRevision: number; persist?: boolean }
   | { action: 'check'; scope: 'all'; persist?: boolean }
+  | { action: 'check'; scope: 'selected'; targets: CheckTarget[]; persist?: boolean }
   | { action: 'review'; cardId: string; expectedRevision: number; checkId: string; assessment: Exclude<Assessment, 'unreviewed'>; note: string }
   | { action: 'archive'; cardId: string; expectedRevision: number; archived: boolean }
   | { action: 'export'; cardId: string; includeHistory?: boolean; path?: string }

@@ -1,4 +1,4 @@
-import { LIMITS, type Card, type Freshness, type Request, type Store, type EvidenceIssue } from './types.js'
+import { LIMITS, type Card, type CardSort, type Freshness, type Request, type Store, type EvidenceIssue } from './types.js'
 
 export class RecheckError extends Error {
   constructor(public readonly code: string, message: string, public readonly retryable = false, public readonly evidenceIssues?: EvidenceIssue[]) { super(message) }
@@ -14,6 +14,12 @@ export function summarize(statuses: Exclude<Freshness, 'unchecked'>[]): Exclude<
 export const freshness = (card: Card): Freshness => card.latestCheck?.freshness ?? 'unchecked'
 export const needsAttention = (card: Card) => freshness(card) !== 'unchanged'
   || ['unreviewed', 'uncertain'].includes(current(card).assessment)
+/** Host 与 Client 共用排序；最近检查按时间降序，未检查固定放最后。 */
+export function orderCards<T extends { cardId: string; needsAttention: boolean; updatedAt: string; observedAt?: string }>(cards: T[], sort: CardSort = 'attention'): T[] {
+  return [...cards].sort((a, b) => (sort === 'attention' ? Number(b.needsAttention) - Number(a.needsAttention)
+    : sort === 'checked' ? (b.observedAt ?? '').localeCompare(a.observedAt ?? '') : 0)
+    || b.updatedAt.localeCompare(a.updatedAt) || a.cardId.localeCompare(b.cardId))
+}
 export function text(value: unknown, field: string, max: number, optional = false): string {
   if (typeof value !== 'string') reject('INVALID_INPUT', `${field}必须是字符串。`)
   const result = value.trim()
@@ -70,9 +76,9 @@ export function evidenceFailure(code: string): { code: string; message: string }
   return Object.hasOwn(messages, code) ? { code, message: messages[code]! } : { code: 'READ_FAILED', message: '无法完整读取文件，请核对路径和权限后重试。' }
 }
 const fields: Record<string, string[]> = {
-  create: ['title', 'claim', 'files', 'note'], list: ['query', 'archived', 'needsAttention', 'freshness'],
+  create: ['title', 'claim', 'files', 'note'], list: ['query', 'archived', 'needsAttention', 'freshness', 'assessment', 'sort'],
   get: ['cardId', 'includeHistory'], edit: ['cardId', 'expectedRevision', 'title', 'claim', 'files', 'note'],
-  check: ['scope', 'cardId', 'expectedRevision', 'persist'], review: ['cardId', 'expectedRevision', 'checkId', 'assessment', 'note'],
+  check: ['scope', 'cardId', 'expectedRevision', 'targets', 'persist'], review: ['cardId', 'expectedRevision', 'checkId', 'assessment', 'note'],
   archive: ['cardId', 'expectedRevision', 'archived'], export: ['cardId', 'includeHistory', 'path'],
 }
 export function parseRequest(input: unknown): Request {
@@ -94,16 +100,29 @@ export function parseRequest(input: unknown): Request {
   if (r.note !== undefined) r.note = text(r.note, '说明', LIMITS.note, true)
   if (r.query !== undefined) r.query = text(r.query, '搜索', LIMITS.claim, true)
   if (r.path !== undefined) r.path = relativePath(r.path)
-  if (r.freshness !== undefined && !['unchecked', 'unchanged', 'changed', 'missing', 'unknown'].includes(String(r.freshness))) reject('INVALID_INPUT', '新鲜度值无效。')
+  if (r.freshness !== undefined && (typeof r.freshness !== 'string' || !['unchecked', 'unchanged', 'changed', 'missing', 'unknown'].includes(r.freshness))) reject('INVALID_INPUT', '新鲜度值无效。')
+  if (r.action === 'list' && r.assessment !== undefined && (typeof r.assessment !== 'string' || !['unreviewed', 'supported', 'refuted', 'uncertain'].includes(r.assessment))) reject('INVALID_INPUT', '复核意见筛选无效。')
+  if (r.sort !== undefined && (typeof r.sort !== 'string' || !['attention', 'checked', 'updated'].includes(r.sort))) reject('INVALID_INPUT', '排序方式无效。')
   if (r.action === 'check') {
-    if (!['card', 'all'].includes(String(r.scope))) reject('INVALID_INPUT', 'scope 必须是 card 或 all。')
-    if (r.scope === 'all' && (r.cardId !== undefined || r.expectedRevision !== undefined)) reject('INVALID_INPUT', '批量检查不能指定卡片或 revision。')
+    if (typeof r.scope !== 'string' || !['card', 'all', 'selected'].includes(r.scope)) reject('INVALID_INPUT', 'scope 必须是 card、all 或 selected。')
+    if (r.scope !== 'card' && (r.cardId !== undefined || r.expectedRevision !== undefined)) reject('INVALID_INPUT', '批量检查不能指定单卡参数。')
+    if (r.scope !== 'selected' && r.targets !== undefined) reject('INVALID_INPUT', 'targets 仅用于 selected 范围。')
+    if (r.scope === 'selected') {
+      if (!Array.isArray(r.targets) || !r.targets.length || r.targets.length > LIMITS.active) reject('INVALID_INPUT', '选中范围必须包含 1–100 张卡片。')
+      const seen = new Set<string>()
+      r.targets = r.targets.map(value => {
+        if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['cardId', 'expectedRevision'].includes(k))) reject('INVALID_INPUT', '每个目标只接受 cardId 和 expectedRevision。')
+        const t = value as Record<string, unknown>, cardId = text(t.cardId, 'cardId', 128)
+        if (!Number.isSafeInteger(t.expectedRevision) || (t.expectedRevision as number) < 1 || seen.has(cardId)) reject('INVALID_INPUT', '目标 revision 必须为正整数，卡片不能重复。')
+        seen.add(cardId); return { cardId, expectedRevision: t.expectedRevision }
+      })
+    }
   }
   if (r.action === 'edit' && r.title === undefined && r.claim === undefined && r.files === undefined) reject('INVALID_INPUT', '编辑至少提供一个可修改字段。')
   if (r.action === 'review') {
     r.checkId = text(r.checkId, 'checkId', 128)
     r.note = text(r.note, '复核说明', LIMITS.note)
-    if (!['supported', 'refuted', 'uncertain'].includes(String(r.assessment))) reject('INVALID_INPUT', '请选择支持、否定或不确定。')
+    if (typeof r.assessment !== 'string' || !['supported', 'refuted', 'uncertain'].includes(r.assessment)) reject('INVALID_INPUT', '请选择支持、否定或不确定。')
   }
   if (r.action === 'archive' && typeof r.archived !== 'boolean') reject('INVALID_INPUT', '归档操作必须指定 archived。')
   return r as unknown as Request

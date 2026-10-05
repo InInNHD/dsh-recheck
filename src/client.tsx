@@ -7,8 +7,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { LIMITS, type Assessment, type Card, type Check, type EvidenceIssue, type Freshness, type Request, type Response } from './types.js'
-import { freshness, current, evidenceIssues, evidenceLines, relativePath, text } from './cards.js'
+import { LIMITS, type Assessment, type Card, type CardSort, type Check, type CheckTarget, type EvidenceIssue, type Freshness, type Request, type Response } from './types.js'
+import { freshness, current, evidenceFailure, evidenceIssues, evidenceLines, orderCards, relativePath, text } from './cards.js'
 import { styles } from './client-styles.js'
 import { pluginVersion, supportedHosts, guidance, type DiagnosticInfo } from './diagnostic-info.js'
 
@@ -39,7 +39,7 @@ const copy = {
 } as const
 type Summary = { cardId: string; versionId: string; title: string; revision: number; archived: boolean; claim: string; freshness: Freshness;
   assessment: Assessment; needsAttention: boolean; evidenceCount: number; updatedAt: string; observedAt?: string; actor: { kind: string } }
-type Listing = { workspace: { id: string; name: string; writable: boolean }; counts: { active: number; archived: number; total: number; needsAttention: number }; cards: Summary[] }
+type Listing = { workspace: { id: string; name: string; writable: boolean }; capabilities?: string[]; counts: { active: number; archived: number; total: number; needsAttention: number }; cards: Summary[] }
 type Form = { mode: 'create' | 'edit' | 'review'; cardId?: string; expectedRevision?: number; checkId?: string;
   title: string; claim: string; files: string; note: string; assessment: '' | Exclude<Assessment, 'unreviewed'> }
 type Props = { sessionId: string; call: (request: Request, signal: AbortSignal) => Promise<Response>; diagnose: (signal: AbortSignal) => Promise<DiagnosticInfo>; navigate: (id: string, signal: AbortSignal) => Promise<void> }
@@ -58,11 +58,21 @@ function Badge({ status, assessment }: { status: Freshness; assessment: Assessme
   return <p className="rc-badges"><strong className="rc-badge" data-state={status}>{copy.fresh[status]}</strong>{' · '}
     <span className="rc-badge">复核意见：{copy.opinion[assessment]}</span></p>
 }
+function ReviewSteps({ checked, read, opinion, saved }: { checked: boolean; read: boolean; opinion: boolean; saved: boolean }) {
+  return <ol className="rc-review-steps" aria-label="复核步骤">{['检查依据', '阅读依据', '选择意见', '保存记录'].map((label, index) => <li key={label} data-complete={[checked, read, opinion, saved][index]}>{index + 1}. {label}{[checked, read, opinion, saved][index] ? ' ✓' : ''}</li>)}</ol>
+}
+function fileReason(code: string): string {
+  return code === 'TIME_BUDGET' ? '检查时间预算已耗尽，请缩小范围后重试。'
+    : code === 'READ_BUDGET' ? '本次文件数量或字节预算已耗尽，请缩小范围。' : evidenceFailure(code).message
+}
 function Panel(props: Props) {
   const fieldId = useId()
   const [list, setList] = useState<Listing>(), [card, setCard] = useState<Card>()
   const [archived, setArchived] = useState(false), [query, setQuery] = useState('')
   const [attention, setAttention] = useState(false), [filter, setFilter] = useState('')
+  const [opinion, setOpinion] = useState(''), [sort, setSort] = useState<CardSort>('attention')
+  const [selected, setSelected] = useState<CheckTarget[]>([]), [readConfirmed, setReadConfirmed] = useState(false)
+  const [batchRows, setBatchRows] = useState<{ cardId: string; title: string; outcome: string; saved: boolean; reason?: { code: string; message: string } }[]>([])
   const [form, setForm] = useState<Form>(), [preview, setPreview] = useState(''), [outputPath, setOutputPath] = useState('')
   const [fullHistory, setFullHistory] = useState(false), [temporary, setTemporary] = useState<Check>()
   const [temporaryBatch, setTemporaryBatch] = useState<Record<string, Check>>({})
@@ -86,6 +96,8 @@ function Panel(props: Props) {
   }
   useEffect(() => { if (error && !busy) { const field = invalidField.current; field ? focusField(field.name, field.index) : focusError.current?.focus() } }, [error, busy])
   useEffect(() => { setFileErrors([]) }, [form?.files, form?.mode])
+  useEffect(() => { setSelected([]) }, [archived, query, attention, filter, opinion, sort])
+  useEffect(() => { setReadConfirmed(false) }, [card?.id, card?.latestCheck?.checkId])
   useEffect(() => {
     if (workspace.current) { if (form) drafts.set(workspace.current, form); else drafts.delete(workspace.current) }
   }, [form])
@@ -107,6 +119,7 @@ function Panel(props: Props) {
   async function refresh() {
     const value: Listing = await call({ action: 'list', archived })
     setList(value)
+    setSelected([])
     setTemporaryBatch(old => Object.fromEntries(Object.entries(old).filter(([id, check]) => value.cards.some(c => c.cardId === id && c.versionId === check.versionId))))
     if (workspace.current !== value.workspace.id) {
       workspace.current = value.workspace.id
@@ -138,15 +151,19 @@ function Panel(props: Props) {
   const canWrite = list?.workspace.writable === true
   const canCreate = canWrite && !!list && list.counts.active < 100 && list.counts.total < 200
   const observed = card && temporary?.versionId === current(card).id ? temporary : card?.latestCheck
-  const reviewAllowed = canWrite && card && !card.archived && card.latestCheck?.checkId
+  const completeSavedCheck = card && !temporary && card.latestCheck?.checkId
+    && card.latestCheck.versionId === current(card).id
     && card.latestCheck.files.every(f => f.status === 'changed' || f.status === 'unchanged')
+  const reviewAllowed = canWrite && card && !card.archived && completeSavedCheck
+  const reviewedEvidence = card && completeSavedCheck && observed?.freshness === 'unchanged' && current(card).reason === 'review'
+  const supportsSelected = list?.capabilities?.includes('selectedCheck') === true
   const displayedFileErrors = fileErrors.length ? fileErrors : form?.files ? evidenceIssues(evidenceLines(form.files)) : []
-  const visible = list?.cards.map(c => {
+  const visible = orderCards(list?.cards.map(c => {
     const candidate = temporaryBatch[c.cardId]
     const observed = candidate?.versionId === c.versionId ? candidate : undefined
-    return observed ? { ...c, freshness: observed.freshness, needsAttention: observed.freshness !== 'unchanged' || ['unreviewed', 'uncertain'].includes(c.assessment) } : c
+    return observed ? { ...c, observedAt: observed.observedAt, freshness: observed.freshness, needsAttention: observed.freshness !== 'unchanged' || ['unreviewed', 'uncertain'].includes(c.assessment) } : c
   }).filter(c => (!query || (c.title + '\n' + c.claim).toLocaleLowerCase().includes(query.toLocaleLowerCase()))
-    && (!attention || c.needsAttention) && (!filter || c.freshness === filter)) ?? []
+    && (!attention || c.needsAttention) && (!filter || c.freshness === filter) && (!opinion || c.assessment === opinion)) ?? [], sort)
   const change = (patch: Partial<Form>) => setForm(old => old ? { ...old, ...patch } : old)
   function clearTemporary(id?: string) {
     setTemporary(undefined)
@@ -160,13 +177,17 @@ function Panel(props: Props) {
     if (saved && saved.versionId !== current(value).id) clearTemporary(id)
     setPreview('')
   }
-  async function check(all = false) {
-    const result = await call(all ? { action: 'check', scope: 'all', persist: canWrite }
+  async function check(scope: 'card' | 'all' | 'selected' = 'card') {
+    const titles = new Map(list?.cards.map(c => [c.cardId, c.title]))
+    const result = await call(scope === 'selected' ? { action: 'check', scope, targets: selected, persist: canWrite }
+      : scope === 'all' ? { action: 'check', scope, persist: canWrite }
       : { action: 'check', scope: 'card', cardId: card!.id, expectedRevision: card!.revision, persist: canWrite })
-    if (result.persisted) clearTemporary(all ? undefined : card!.id)
-    setMessage(`${result.persisted ? '检查结果已保存' : '本次检查结果未保存'}：完成 ${result.counts.checked} 张，冲突 ${result.counts.conflict} 张，错误 ${result.counts.error} 张，未知依据 ${result.counts.unknownFiles} 个。`)
-    if (!canWrite && all) setTemporaryBatch(Object.fromEntries(result.results.filter((r: any) => r.outcome === 'checked').map((r: any) => [r.cardId, r])))
-    if (!all && card) {
+    if (result.persisted) clearTemporary(scope === 'card' ? card!.id : undefined)
+    const savedCount = result.counts.saved ?? (result.persisted ? result.counts.checked : 0)
+    setMessage(`${savedCount ? '检查结果已保存' : '本次检查结果未保存'}：完成 ${result.counts.checked} 张，保存 ${savedCount} 张，冲突 ${result.counts.conflict} 张，错误 ${result.counts.error} 张，未知依据 ${result.counts.unknownFiles} 个。`)
+    if (scope !== 'card') setBatchRows(result.results.map((r: any) => ({ cardId: r.cardId, title: titles.get(r.cardId) ?? r.cardId, outcome: r.outcome, saved: r.saved ?? (result.persisted && r.outcome === 'checked'), reason: r.reason })))
+    if (!canWrite && scope !== 'card') setTemporaryBatch(old => ({ ...old, ...Object.fromEntries(result.results.filter((r: any) => r.outcome === 'checked').map((r: any) => [r.cardId, r])) }))
+    if (scope === 'card' && card) {
       if (canWrite) await open(card.id, false)
       else setTemporary(result.results.find((r: any) => r.cardId === card.id && r.outcome === 'checked'))
     }
@@ -177,7 +198,7 @@ function Panel(props: Props) {
     setForm({ mode: 'edit', cardId: card!.id, expectedRevision: card!.revision, title: card!.title, claim: v.claim,
       files: v.evidence.map(e => e.path).join('\n'), note: '', assessment: '' })
   }
-  function review() { setForm({ ...empty(), mode: 'review', cardId: card!.id, expectedRevision: card!.revision, checkId: card!.latestCheck!.checkId }) }
+  function review() { setReadConfirmed(false); setForm({ ...empty(), mode: 'review', cardId: card!.id, expectedRevision: card!.revision, checkId: card!.latestCheck!.checkId }) }
   async function submit() {
     if (!form) return
     const f = form
@@ -198,6 +219,7 @@ function Panel(props: Props) {
     if (f.mode === 'create') req = { action: 'create', title: f.title, claim: f.claim, files, note: f.note }
     else if (f.mode === 'edit') req = { action: 'edit', cardId: f.cardId!, expectedRevision: f.expectedRevision!, title: f.title, claim: f.claim, files, note: f.note }
     else {
+      if (!readConfirmed) { invalidField.current = { name: 'readConfirmed' }; throw new Error('请先阅读本次检查对应的依据文件，再确认已阅读。') }
       if (!f.assessment) { invalidField.current = { name: 'assessment' }; throw new Error('请主动选择复核意见。') }
       req = { action: 'review', cardId: f.cardId!, expectedRevision: f.expectedRevision!, checkId: f.checkId!, assessment: f.assessment, note: f.note }
     }
@@ -275,9 +297,12 @@ function Panel(props: Props) {
         </section>
         {form.mode === 'edit' && <p className="rc-notice">仅改标题保留原意见。修改结论或依据会建立新版本，重置意见与检查；变更说明必填。</p>}
       </> : <>
+        <ReviewSteps checked={!!reviewAllowed && form.checkId === card?.latestCheck?.checkId && form.expectedRevision === card?.revision} read={readConfirmed} opinion={!!form.assessment} saved={false} />
         <p className="rc-notice">将记录为用户复核。引用检查：{form.checkId}；revision：{form.expectedRevision}。<br />观察时间：{stamp(card?.latestCheck?.observedAt)} · 依据 {card ? current(card).evidence.length : '—'} 个。保存前将重新读取依据。</p>
+        <p className="rc-muted">请在编辑器中阅读本次检查的文件：{card ? current(card).evidence.map(e => e.path).join('、') : '请先重新读取卡片核对依据。'}。勾选确认不代表结论已被自动验证。</p>
+        <label className="rc-checkbox"><input name="readConfirmed" type="checkbox" checked={readConfirmed} onChange={e => setReadConfirmed(e.target.checked)} />我已阅读本次检查对应的依据文件</label>
         {fileErrors.length > 0 && <ul className="rc-file-errors">{fileErrors.map(issue => <li key={issue.index}>第 {issue.index + 1} 个依据{card ? `（${current(card).evidence[issue.index]?.path ?? ''}）` : ''}：{issue.message}</li>)}</ul>}
-        <section className="rc-form-section"><label>复核意见<select name="assessment" required value={form.assessment} onChange={e => change({ assessment: e.target.value as Form['assessment'] })}>
+        <section className="rc-form-section"><label>复核意见<select name="assessment" aria-label="复核意见" required value={form.assessment} onChange={e => change({ assessment: e.target.value as Form['assessment'] })}>
           <option value="">请选择…</option><option value="supported">支持</option><option value="refuted">否定</option><option value="uncertain">不确定</option>
         </select></label></section>
       </>}
@@ -294,6 +319,8 @@ function Panel(props: Props) {
       </div>
       <h3>{card.title}{card.archived ? '（已归档）' : ''}</h3>
       <Badge status={observed?.freshness ?? freshness(card)} assessment={current(card).assessment} />
+      <ReviewSteps checked={!!completeSavedCheck} read={!!reviewedEvidence} opinion={!!reviewedEvidence} saved={!!reviewedEvidence} />
+      <p className="rc-muted">步骤表示当前依据对应的复核进度；上方保留已有版本的意见。再次复核需重新阅读并主动选择。</p>
       {temporary && <p><strong>临时观察，未保存；不能引用本次结果复核。</strong></p>}
       <p>当前版本：{current(card).id}<br />revision：{card.revision}<br />上次观察：{stamp(observed?.observedAt)}</p>
       <p className="rc-claim">{current(card).claim}</p>
@@ -304,7 +331,7 @@ function Panel(props: Props) {
       <h4>依据文件</h4>
       {current(card).evidence.map(e => {
         const f = observed?.files.find(f => f.path === e.path)
-        return <article key={e.path}><strong>{e.path}</strong><p>{copy.fresh[f?.status ?? 'unchecked']}{f?.reason ? ` · ${f.reason}` : ''}</p>
+        return <article key={e.path} data-state={f?.status}><strong>{e.path}</strong><p>{copy.fresh[f?.status ?? 'unchecked']}{f?.reason ? ` · ${fileReason(f.reason)}` : ''}</p>
           <p>基线捕获：{stamp(e.capturedAt)}<br />本次观察：{stamp(f?.observedAt)}</p>
           <details><summary>指纹与字节详情</summary><pre>基线 SHA-256：{e.sha256}{'\n'}基线字节：{e.size}{'\n'}当前 SHA-256：{f?.sha256 ?? '未获得'}{'\n'}当前字节：{f?.size ?? '未获得'}</pre></details>
         </article>
@@ -343,21 +370,27 @@ function Panel(props: Props) {
       </div>
       <div className="rc-toolbar">
         <div className="rc-tabs" role="group" aria-label="卡片范围"><button disabled={busy} aria-pressed={!archived} onClick={() => setArchived(false)}>活动卡片</button><button disabled={busy} aria-pressed={archived} onClick={() => setArchived(true)}>已归档</button></div>
-        <button className="rc-check-all" disabled={busy || !list || list.counts.active === 0} aria-describedby={`${fieldId}-batch-help`} onClick={() => void run(() => check(true))}><Icon name="refresh" />{canWrite ? '检查全部活动卡片并保存' : '临时检查全部活动卡片'}</button>
+        <button className="rc-check-all" disabled={busy || !list || list.counts.active === 0} aria-describedby={`${fieldId}-batch-help`} onClick={() => void run(() => check('all'))}><Icon name="refresh" />{canWrite ? '检查全部活动卡片并保存' : '临时检查全部活动卡片'}</button>
       </div>
       <div className="rc-filters">
-        <div className="rc-search"><Icon name="search" /><input aria-label="搜索标题或结论" value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索标题或结论…" /></div>
-        <select aria-label="新鲜度" value={filter} onChange={e => setFilter(e.target.value)}><option value="">全部新鲜度</option>{Object.entries(copy.fresh).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select>
+        <div className="rc-search"><Icon name="search" /><input disabled={busy} aria-label="搜索标题或结论" value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索标题或结论…" /></div>
+        <select disabled={busy} aria-label="新鲜度" value={filter} onChange={e => setFilter(e.target.value)}><option value="">全部新鲜度</option>{Object.entries(copy.fresh).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select>
+        <select disabled={busy} aria-label="复核意见筛选" value={opinion} onChange={e => setOpinion(e.target.value)}><option value="">全部复核意见</option>{Object.entries(copy.opinion).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select>
+        <select disabled={busy} aria-label="排序方式" value={sort} onChange={e => setSort(e.target.value as CardSort)}><option value="attention">需要关注优先</option><option value="checked">最近检查（未检查在后）</option><option value="updated">最近更新</option></select>
       </div>
-      <div className="rc-filter-bottom"><label className="rc-checkbox"><input type="checkbox" checked={attention} onChange={e => setAttention(e.target.checked)} />只显示需要关注</label><span className="rc-muted">显示 {visible.length} 张 · 总量 {list?.counts.total ?? '—'}/200</span></div>
-      <p className="rc-muted" id={`${fieldId}-batch-help`} style={{ marginBottom: 14 }}>批量检查覆盖所有活动卡片，不受搜索和筛选影响。</p>
+      <div className="rc-filter-bottom"><label className="rc-checkbox"><input disabled={busy} type="checkbox" checked={attention} onChange={e => setAttention(e.target.checked)} />只显示需要关注</label><span className="rc-muted">显示 {visible.length} 张 · 已选 {selected.length} 张 · 总量 {list?.counts.total ?? '—'}/200</span></div>
+      {!archived && <div className="rc-selection" aria-label="选中范围"><button disabled={busy || !supportsSelected || !visible.length} onClick={() => setSelected(visible.map(c => ({ cardId: c.cardId, expectedRevision: c.revision })))}>选中当前显示的卡片</button><button disabled={busy || !selected.length} onClick={() => setSelected([])}>清空选择</button>
+        <button className="rc-primary" disabled={busy || !supportsSelected || !selected.length} onClick={() => void run(() => check('selected'))}>{canWrite ? `检查选中的 ${selected.length} 张并保存` : `临时检查选中的 ${selected.length} 张`}</button></div>}
+      <p className="rc-muted">筛选、排序、范围变化或刷新列表会清空选择；项目统计来自已保存记录。{!supportsSelected ? '当前 Host 未声明选中检查能力，请升级 Host 插件并重启。' : ''}</p>
+      <p className="rc-muted" id={`${fieldId}-batch-help`} style={{ marginBottom: 14 }}>“检查全部活动卡片”不受搜索和筛选影响；选中检查只处理明确选中的卡片。</p>
       {Object.keys(temporaryBatch).length > 0 && <p className="rc-notice">下方带“未保存”的状态来自临时观察；上方数量统计来自已保存记录。</p>}
+      {!!batchRows.length && <details className="rc-batch-results"><summary>逐卡检查结果（{batchRows.length}）</summary><ul>{batchRows.map(r => <li key={r.cardId} data-outcome={r.outcome}>{r.title}：{r.reason ? `${r.reason.message}（${r.reason.code}）` : r.saved ? '已检查并保存' : '临时观察，未保存'}</li>)}</ul></details>}
       {list && !visible.length && <div className="rc-empty"><span className="rc-empty-icon"><Icon name={list.cards.length ? 'search' : 'box'} /></span>
         <h3>{list.cards.length ? '没有匹配的卡片' : archived ? '暂无归档卡片' : '收藏值得再次确认的结论'}</h3>
         <p>{list.cards.length ? '当前筛选没有匹配的卡片，请调整搜索或筛选条件。' : archived ? '归档后的卡片会保留历史，可随时恢复。' : '绑定项目文件，检查依据是否变化，再记录你的复核意见。'}</p>
-        {list.cards.length ? <button onClick={() => { setQuery(''); setAttention(false); setFilter('') }}>清除筛选</button> : !archived && <button className="rc-ghost" disabled={busy || !canCreate} onClick={() => setForm(empty())}><Icon name="plus" />收藏第一条结论</button>}
+        {list.cards.length ? <button onClick={() => { setQuery(''); setAttention(false); setFilter(''); setOpinion('') }}>清除筛选</button> : !archived && <button className="rc-ghost" disabled={busy || !canCreate} onClick={() => setForm(empty())}><Icon name="plus" />收藏第一条结论</button>}
       </div>}
-      <div className="rc-list">{visible.map(c => <article className="rc-card" key={c.cardId}><button className="card-title" disabled={busy} onClick={() => void run(() => open(c.cardId))}><span>{c.title}</span><Icon name="arrow" /></button>
+      <div className="rc-list">{visible.map(c => <article className="rc-card" key={c.cardId}>{!archived && <label className="rc-checkbox"><input type="checkbox" aria-label={`选择卡片：${c.title}`} disabled={busy || !supportsSelected} checked={selected.some(t => t.cardId === c.cardId)} onChange={e => setSelected(old => e.target.checked ? [...old, { cardId: c.cardId, expectedRevision: c.revision }] : old.filter(t => t.cardId !== c.cardId))} />加入检查范围</label>}<button className="card-title" disabled={busy} onClick={() => void run(() => open(c.cardId))}><span>{c.title}</span><Icon name="arrow" /></button>
         <Badge status={c.freshness} assessment={c.assessment} />{temporaryBatch[c.cardId] && <p className="rc-muted">本次观察未保存。</p>}<p className="rc-claim">{c.claim.slice(0, 120)}</p>
         <p className="rc-meta">{c.evidenceCount} 个依据 · 来源 {c.actor.kind === 'user' ? '用户' : 'Agent'}<br />最近检查 {stamp(c.observedAt)}</p>
       </article>)}</div>

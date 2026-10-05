@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { basename } from 'node:path'
 import { LIMITS, type Card, type CardVersion, type Check, type Evidence, type EvidenceIssue, type FileCheck, type Request, type Response } from './types.js'
-import { current, evidenceFailure, findCard, freshness, needsAttention, parseRequest, reject, RecheckError, summarize, text } from './cards.js'
+import { current, evidenceFailure, findCard, freshness, needsAttention, orderCards, parseRequest, reject, RecheckError, summarize, text } from './cards.js'
 import { errorCode, fileFailure, guardedWrite, now, readEvidence, sha256, target, writable, type Environment } from './io.js'
 import { loadStore, saveStore } from './store.js'
 import { markdown } from './export.js'
@@ -102,13 +102,13 @@ export class Recheck {
       if (req.query) { const q = req.query.toLocaleLowerCase(); cards = cards.filter(c => (c.title + '\n' + current(c).claim).toLocaleLowerCase().includes(q)) }
       if (req.needsAttention !== undefined) cards = cards.filter(c => needsAttention(c) === req.needsAttention)
       if (req.freshness) cards = cards.filter(c => freshness(c) === req.freshness)
-      cards.sort((a, b) => Number(needsAttention(b)) - Number(needsAttention(a)) || b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id))
+      if (req.assessment) cards = cards.filter(c => current(c).assessment === req.assessment)
       return { workspace: { id: sha256(Buffer.from(String(env.root.targetKey))), name: basename(env.cwd), writable: env.policy.mode !== 'read-only' },
-        storeRevision: loaded.value.storeRevision, counts: { active: all.filter(c => !c.archived).length, archived: all.filter(c => c.archived).length,
+        capabilities: ['selectedCheck', 'assessmentFilter', 'listSort'], storeRevision: loaded.value.storeRevision, counts: { active: all.filter(c => !c.archived).length, archived: all.filter(c => c.archived).length,
           total: all.length, needsAttention: all.filter(c => !c.archived && needsAttention(c)).length },
-        cards: cards.map(c => ({ cardId: c.id, versionId: current(c).id, title: c.title, revision: c.revision, archived: c.archived, claim: current(c).claim,
+        cards: orderCards(cards.map(c => ({ cardId: c.id, versionId: current(c).id, title: c.title, revision: c.revision, archived: c.archived, claim: current(c).claim,
           freshness: freshness(c), assessment: current(c).assessment, needsAttention: needsAttention(c), evidenceCount: current(c).evidence.length,
-          updatedAt: c.updatedAt, observedAt: c.latestCheck?.observedAt, actor: current(c).actor })) }
+          updatedAt: c.updatedAt, observedAt: c.latestCheck?.observedAt, actor: current(c).actor })), req.sort) }
     }
     if (req.action === 'create') {
       const evidence = await this.capture(env, req.files)
@@ -182,13 +182,38 @@ export class Recheck {
     reject('INVALID_INPUT', '动作不受支持。')
   }
   private async check(env: Environment, writeEnv: Environment, all: Card[], req: Extract<Request, { action: 'check' }>): Promise<unknown> {
-    const cards = req.scope === 'all' ? all.filter(c => !c.archived) : [findCard({ schemaVersion: 1, storeRevision: 0, cards: all }, req.cardId, req.expectedRevision)]
+    const failures = new Map<string, { outcome: 'error' | 'conflict'; cardId: string; saved: false; reason: { code: string; message: string } }>()
+    let cards: Card[]
+    if (req.scope === 'selected') {
+      cards = []
+      for (const t of req.targets) {
+        const card = all.find(c => c.id === t.cardId)
+        const reason = !card ? { code: 'CARD_NOT_FOUND', message: '卡片不存在，本卡未检查。' }
+          : card.archived ? { code: 'ARCHIVED_CARD', message: '卡片已归档，请恢复后再检查。' }
+          : card.revision !== t.expectedRevision ? { code: 'REVISION_CONFLICT', message: '卡片已更新，本卡未检查；请刷新后重新选择。' } : undefined
+        if (reason) failures.set(t.cardId, { outcome: reason.code === 'REVISION_CONFLICT' ? 'conflict' : 'error', cardId: t.cardId, saved: false, reason })
+        else cards.push(card!)
+      }
+    } else cards = req.scope === 'all' ? all.filter(c => !c.archived) : [findCard({ schemaVersion: 1, storeRevision: 0, cards: all }, req.cardId, req.expectedRevision)]
     if (cards.some(c => c.archived)) reject('ARCHIVED_CARD', '请先恢复卡片，再检查。')
     const persist = req.persist !== false, deadline = AbortSignal.timeout(LIMITS.timeoutMs)
     const readEnv = { ...env, signal: AbortSignal.any([env.signal, deadline]) }
     const cache = new Map<string, Omit<FileCheck, 'path' | 'status'> & { failure?: 'missing' | 'unknown' }>()
     let remaining = LIMITS.batchBytes
     const collected: { card: Card; check: Check }[] = []
+    const response = (outcomes: any[], cancelled = false) => {
+      const results = req.scope === 'selected' ? req.targets.map(t => failures.get(t.cardId) ?? outcomes.find(r => r.cardId === t.cardId)
+        ?? { outcome: 'error', cardId: t.cardId, saved: false, reason: { code: 'CANCELLED', message: '检查已取消，本卡没有保存。' } }) : outcomes
+      return { persisted: persist && !cancelled, saved: results.some(r => r.saved), cancelled, results,
+        counts: { checked: results.filter(r => r.outcome === 'checked').length, saved: results.filter(r => r.saved).length,
+          conflict: results.filter(r => r.outcome === 'conflict').length, error: results.filter(r => r.outcome === 'error').length,
+          unknownFiles: results.reduce((n, r) => n + (r.coverage?.unknownFiles ?? 0), 0) } }
+    }
+    const observations = () => collected.map(({ card, check }) => {
+      const { checkId: _unsavedId, ...value } = check
+      return { outcome: 'checked', cardId: card.id, revision: card.revision, ...value, persisted: false, saved: false }
+    })
+    try {
     for (const c of cards) {
       const files: FileCheck[] = []
       for (const base of current(c).evidence) {
@@ -207,10 +232,11 @@ export class Recheck {
               remaining -= snapshot.evidence.size
               result = { observedAt: snapshot.evidence.capturedAt, sha256: snapshot.evidence.sha256, size: snapshot.evidence.size }
             } catch (error) {
+              env.signal.throwIfAborted()
               // 失败的读取可能已读取部分字节；保守扣除许可额度保证总读取上限。
               remaining -= allowance
               const failure = fileFailure(error)
-              result = { observedAt: now(), failure: failure.status, reason: failure.reason }
+              result = { observedAt: now(), failure: failure.status, reason: deadline.aborted ? 'TIME_BUDGET' : failure.reason }
             }
             cache.set(file.targetKey, result)
           }
@@ -225,21 +251,22 @@ export class Recheck {
       collected.push({ card: c, check: makeCheck(c, files, persist) })
     }
     env.signal.throwIfAborted()
-    const response = (outcomes: any[]) => ({ persisted: persist, results: outcomes,
-      counts: { checked: outcomes.filter(r => r.outcome === 'checked').length, conflict: outcomes.filter(r => r.outcome === 'conflict').length,
-        error: outcomes.filter(r => r.outcome === 'error').length, unknownFiles: outcomes.reduce((n, r) => n + (r.coverage?.unknownFiles ?? 0), 0) } })
-    if (!persist) return response(collected.map(({ card, check }) => ({ outcome: 'checked', cardId: card.id, revision: card.revision, ...check })))
-    return this.commit(writeEnv, async () => {
+    if (!persist) return response(observations())
+    return await this.commit(writeEnv, async () => {
       const fresh = await loadStore(writeEnv)
       const outcomes = collected.map(({ card: before, check }) => {
         const c = fresh.value.cards.find(c => c.id === before.id)
         if (!c || c.archived || c.revision !== before.revision || current(c).id !== check.versionId)
-          return { outcome: 'conflict', cardId: before.id, reason: { code: 'REVISION_CONFLICT', message: '卡片在检查期间改变；本卡结果没有保存。' } }
+          return { outcome: 'conflict', cardId: before.id, saved: false, reason: { code: 'REVISION_CONFLICT', message: '卡片在检查期间改变；本卡结果没有保存。' } }
         c.latestCheck = check; touch(c)
-        return { outcome: 'checked', cardId: c.id, revision: c.revision, ...check }
+        return { outcome: 'checked', cardId: c.id, revision: c.revision, ...check, saved: true }
       })
       if (outcomes.some(r => r.outcome === 'checked')) await saveStore(writeEnv, fresh)
       return response(outcomes)
     })
+    } catch (error) {
+      if (req.scope === 'selected' && env.signal.aborted) return response(observations(), true)
+      throw error
+    }
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pluginVersion": "0.1.0-alpha.6",
+  "pluginVersion": "0.1.0-beta.1",
   "storageSchema": 1,
   "supportedHosts": [
     "0.2.0-rc.2",
@@ -15,8 +15,8 @@
         "web",
         "desktop"
       ],
-      "status": "verified",
-      "report": "docs/18-alpha6-acceptance.md"
+      "status": "validated-locally",
+      "report": "docs/19-beta1-acceptance.md"
     },
     {
       "host": "0.2.1-alpha.1",
@@ -24,8 +24,8 @@
       "surfaces": [
         "web"
       ],
-      "status": "verified",
-      "report": "docs/18-alpha6-acceptance.md"
+      "status": "validated-locally",
+      "report": "docs/19-beta1-acceptance.md"
     },
     {
       "host": "0.2.1-alpha.1",
@@ -44,7 +44,7 @@
         "0.2.0-rc.2",
         "0.2.1-alpha.1"
       ],
-      "report": "docs/18-alpha6-acceptance.md"
+      "report": "docs/19-beta1-acceptance.md"
     }
   ],
   "policy": "Only explicitly verified combinations are supported. Web verification does not imply Desktop verification."

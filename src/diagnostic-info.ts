@@ -17,6 +17,8 @@ export interface DiagnosticInfo {
 export function guidance(code: string): string {
   const advice: Record<string, string> = {
     REVISION_CONFLICT: '重新读取卡片并核对变化；草稿会保留，再决定是否重新提交。',
+    CHECK_CONFLICT: '检查已过期或依据又有变化；先重新检查并保存，再阅读依据与记录意见。',
+    INCOMPLETE_CHECK: '核对逐文件原因，修正缺失、权限或预算问题后重新检查；未知结果不能用于复核。',
     READ_ONLY: '可查看、复制导出和临时检查；需要保存时，请在宿主切换到允许写入的模式。',
     PERMISSION_DENIED: '在宿主核对当前会话的访问权限；不要通过关闭沙箱绕过限制。',
     CORRUPT_STORE: '原数据已保留。暂停写入并先备份，再按安装指南检查或恢复数据。',

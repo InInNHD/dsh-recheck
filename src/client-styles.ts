@@ -140,6 +140,15 @@ export const styles = `
 .recheck fieldset.rc-form-fields { display: block; border: 0; padding: 0; margin: 0; }
 .recheck .rc-file-errors { padding-left: 18px; margin: 8px 0; font-size: 12px; overflow-wrap: anywhere; color: var(--dsw-alias-state-error-primary, #dc3434); }
 .recheck .rc-file-errors:empty { display: none; }
+.recheck .rc-selection { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+.recheck .rc-selection button { font-size: 12px; }
+.recheck .rc-review-steps { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 10px 0; font-size: 12px; }
+.recheck .rc-review-steps li { border-radius: 6px; padding: 4px 8px; background: var(--rc-soft); color: var(--rc-muted); }
+.recheck .rc-review-steps [data-complete=true] { color: var(--rc-accent); }
+.recheck .rc-detail article[data-state=missing], .recheck [data-outcome=error] { border-left: 3px solid var(--dsw-alias-state-error-primary, #dc3434); }
+.recheck .rc-detail article[data-state=unknown], .recheck [data-outcome=conflict] { border-left: 3px solid var(--dsw-alias-state-warning-primary, #b7791f); }
+.recheck .rc-batch-results { margin: 10px 0; }
+.recheck .rc-batch-results li { padding: 5px 8px; overflow-wrap: anywhere; }
 .recheck .rc-file-errors button { padding: 0; border: 0; background: none; color: inherit; text-decoration: underline; }
 .recheck [aria-invalid=true] { border-color: var(--dsw-alias-state-error-primary, #dc3434); }
 .recheck fieldset label > input:not([type=checkbox]), .recheck fieldset textarea { margin-top: 6px; }

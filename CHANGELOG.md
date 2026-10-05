@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.0-beta.1 — 2026-10-06
+
+- Add combined assessment/freshness filters, stable attention/check/update sorting, explicit selections, separate project/display/selection counts and filter-change selection reset.
+- Add bounded Host-side `check scope:selected` with 1–100 explicit ID/revision targets, shared reads, per-card validation, conflicts, cancellation observations and actual saved counts. Keep card/all requests and schema 1 compatible; do not automatically review cards.
+- Show check/read/choose/save steps and explicit local reading confirmation. Temporary/incomplete checks cannot be used for a persisted review. Explain time/byte/target budget failures and preserve cancellation without claiming unsaved results were committed.
+- Disable selected checking when Host list capabilities are absent. Reuse native controls and Harness theme tokens with no new runtime dependency.
+- Extend real FS/ToolRuntime tests and shared Web/Desktop queue acceptance; keep 20-cycle lifecycle, actual tgz installation, data preservation, alpha.6 rollback and exact Host SDK checks. Validation procedure and boundaries: docs/19-beta1-acceptance.md. Distribute the same built tgz through npm beta and GitHub prereleases, gated by matching-commit CI. Refresh the bilingual install instructions and real beta.1 screenshots; add a four-state file-change/check/read/review demo.
+
 ## 0.1.0-alpha.6 — 2026-10-05
 
 - Handle reproduced Windows ReplaceFileW error 1175 with two bounded retries through the same Host FS and original CAS guard; return a controlled WRITE_BUSY response if it persists. Preserve cancellation, concurrent updates, and failures for other error codes.

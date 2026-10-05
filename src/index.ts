@@ -12,6 +12,7 @@ export { evidenceIssues, evidenceLines } from './cards.js'
 import { RecheckError, reject, text } from './cards.js'
 import type { Environment } from './io.js'
 import type { Response } from './types.js'
+import { LIMITS } from './types.js'
 import { diagnostics } from './diagnostics.js'
 export { diagnostics } from './diagnostics.js'
 export { pluginVersion, supportedHosts, guidance } from './diagnostic-info.js'
@@ -34,27 +35,39 @@ const properties = {
   action: { type: 'string', enum: ['create', 'list', 'get', 'edit', 'check', 'review', 'archive', 'export'], required: true },
   title: { type: 'string' }, claim: { type: 'string' }, files: { type: 'array', items: { type: 'string' } }, note: { type: 'string' },
   query: { type: 'string' }, archived: { type: 'boolean' }, needsAttention: { type: 'boolean' },
+  sort: { type: 'string', enum: ['attention', 'checked', 'updated'] },
   freshness: { type: 'string', enum: ['unchecked', 'unchanged', 'changed', 'missing', 'unknown'] },
   cardId: { type: 'string' }, expectedRevision: { type: 'integer' }, includeHistory: { type: 'boolean' },
-  scope: { type: 'string', enum: ['card', 'all'] }, persist: { type: 'boolean' }, checkId: { type: 'string' },
-  assessment: { type: 'string', enum: ['supported', 'refuted', 'uncertain'] }, path: { type: 'string' },
+  scope: { type: 'string', enum: ['card', 'all', 'selected'] }, persist: { type: 'boolean' }, checkId: { type: 'string' },
+  targets: { type: 'array', items: { type: 'object', additionalProperties: false, properties: {
+    cardId: { type: 'string', required: true }, expectedRevision: { type: 'integer', required: true },
+  } } },
+  assessment: { type: 'string', enum: ['unreviewed', 'supported', 'refuted', 'uncertain'] }, path: { type: 'string' },
 } as const
 function branch(action: string, names: string[], required: string[], fixed: Record<string, unknown> = {}) {
   return { type: 'object', additionalProperties: false, properties: Object.fromEntries([
     ['action', { type: 'string', const: action }], ...names.map(key => {
       const { required: _required, ...value } = properties[key as keyof typeof properties] as { required?: boolean; [key: string]: unknown }
-      return [key, key in fixed ? { ...value, const: fixed[key] } : value]
+      // 工具作者 DSL 使用 required:true；对外 JSON Schema 必须改成对象 required 数组。
+      if (key === 'targets') return [key, { type: 'array', minItems: 1, maxItems: LIMITS.active,
+        items: { type: 'object', additionalProperties: false, properties: {
+          cardId: { type: 'string', minLength: 1, maxLength: 128 },
+          expectedRevision: { type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER },
+        }, required: ['cardId', 'expectedRevision'] },
+      }]
+      return [key, key in fixed ? { ...value, const: fixed[key] } : key === 'assessment' && action === 'review' ? { ...value, enum: ['supported', 'refuted', 'uncertain'] } : value]
     }),
   ]), required: ['action', ...required] }
 }
 // root oneOf 保持产品的扁平 action API；执行函数仍做同等严格的领域校验。
 export const parameters = { oneOf: [
   branch('create', ['title', 'claim', 'files', 'note'], ['title', 'claim', 'files']),
-  branch('list', ['query', 'archived', 'needsAttention', 'freshness'], []),
+  branch('list', ['query', 'archived', 'needsAttention', 'freshness', 'assessment', 'sort'], []),
   branch('get', ['cardId', 'includeHistory'], ['cardId']),
   branch('edit', ['cardId', 'expectedRevision', 'title', 'claim', 'files', 'note'], ['cardId', 'expectedRevision']),
   branch('check', ['scope', 'cardId', 'expectedRevision', 'persist'], ['scope', 'cardId', 'expectedRevision'], { scope: 'card' }),
   branch('check', ['scope', 'persist'], ['scope'], { scope: 'all' }),
+  branch('check', ['scope', 'targets', 'persist'], ['scope', 'targets'], { scope: 'selected' }),
   branch('review', ['cardId', 'expectedRevision', 'checkId', 'assessment', 'note'], ['cardId', 'expectedRevision', 'checkId', 'assessment', 'note']),
   branch('archive', ['cardId', 'expectedRevision', 'archived'], ['cardId', 'expectedRevision', 'archived']),
   branch('export', ['cardId', 'includeHistory', 'path'], ['cardId']),
@@ -96,7 +109,10 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.tools.register({ ...definition, parameters,
     finalizeContent(exec, result) {
       const value = committed.get(exec.token)
-      if (value && result.isError) return [{ type: 'text', text: `宿主在操作完成后返回工具错误；本次保存已完成。实际结果：${JSON.stringify(value)}。请先读取卡片再决定是否重试。` }]
+      if (value && result.isError) {
+        const saved = value.status === 'ok' && (value.action !== 'check' || (value.data as { saved?: boolean }).saved === true)
+        return [{ type: 'text', text: `宿主在操作完成后返回工具错误；${saved ? '本次保存已完成' : '本次检查没有保存，请查看逐卡结果'}。实际结果：${JSON.stringify(value)}。请先读取卡片再决定是否重试。` }]
+      }
       return undefined
     },
   }))

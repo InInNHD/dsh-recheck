@@ -2,44 +2,48 @@
 
 [![CI](https://github.com/InInNHD/dsh-recheck/actions/workflows/ci.yml/badge.svg)](https://github.com/InInNHD/dsh-recheck/actions/workflows/ci.yml)
 
-[English](README.en.md) · [下载 alpha 安装包](https://github.com/InInNHD/dsh-recheck/releases) · [安装指南](docs/12-installation.md) · [问题反馈](https://github.com/InInNHD/dsh-recheck/issues)
+[English](README.en.md) · [下载 beta 安装包](https://github.com/InInNHD/dsh-recheck/releases) · [安装指南](docs/12-installation.md) · [问题反馈](https://github.com/InInNHD/dsh-recheck/issues)
 
 **非官方项目，由社区成员独立开发和维护。**
 
 给项目结论绑定文件依据，在依据变化后提醒复核。Recheck 提供一个 `recheck` 工具与 DSH 原生右侧栏；卡片操作不需要额外模型调用。
 
-当前版本 **0.1.0-alpha.6**，通过 npm `alpha` 和 GitHub Release 分发。alpha.6 增加依据逐行反馈、失败焦点定位及来源会话导航，保留原有八种业务动作与 schema 1。详情和验收方式见 [alpha.6 说明](docs/18-alpha6-acceptance.md) 与 [兼容清单](compatibility.json)。已验证 Windows 上的 Harness 0.2.0-rc.2 Web/Desktop 与 0.2.1-alpha.1 Web；发布 CI 覆盖 Windows/Ubuntu 与两个精确宿主。Web 验收不代表其他 Desktop 组合已验证。
+当前版本 **0.1.0-beta.1**：增加复核意见筛选、稳定排序、显式选中批量检查和“检查 → 阅读 → 选择意见 → 保存”步骤。保持八种业务动作与 schema 1，见 [beta.1 验收说明](docs/19-beta1-acceptance.md)、[兼容清单](compatibility.json) 和 [对应 Release](https://github.com/InInNHD/dsh-recheck/releases/tag/v0.1.0-beta.1)。安装使用固定版本；npm `beta` 为预发布渠道。发布须通过 Windows/Ubuntu × 两个精确宿主的 CI；该提交的运行和结果见 Release。Web 验收不代表其他 Desktop 组合已验证。
 
-![Recheck alpha.4 主界面](docs/assets/recheck-alpha4-main.png)
+![Recheck beta.1：筛选、排序与选中检查](docs/assets/recheck-beta1-main.png)
 
-![Recheck alpha.4 新建表单](docs/assets/recheck-alpha4-create.png)
+![Recheck beta.1：阅读确认与人工复核](docs/assets/recheck-beta1-demo-3.png)
 
 ## 安装
 
-以下命令固定使用 alpha.6 与基线宿主 0.2.0-rc.2。其他已验证组合及回退说明见 [alpha.6 安装与回退](docs/18-alpha6-acceptance.md#安装与回退)。上方界面截图来自 alpha.4。
+以下命令固定使用 beta.1 与基线宿主 0.2.0-rc.2。其他组合及 alpha.6 回退说明见 [beta.1 安装与回退](docs/19-beta1-acceptance.md#安装与回退)。截图与演示来自真实 beta.1 隔离样例项目。
 
-从 Releases 下载 `dsh-recheck-0.1.0-alpha.6.tgz` 和同名 `.sha256` 文件，校验后通过匹配版本宿主安装。普通 Web 用户可从 npm 安装固定版本：
+从 Releases 下载 `dsh-recheck-0.1.0-beta.1.tgz` 和同名 `.sha256` 文件，校验后通过匹配版本宿主安装。普通 Web 用户可从 npm 安装固定版本：
 
 ```powershell
-npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-alpha.6
+npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-beta.1
 npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
 使用下载的 tgz 时，在安装包所在目录运行：
 
 ```powershell
-npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0-alpha.6.tgz'
+npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0-beta.1.tgz'
 npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
-桌面用户使用桌面应用自带 CLI 或插件管理入口安装到 `desktop`，然后重启桌面应用。不要使用不匹配的全局 CLI。完整命令、备份、卸载和回退见 [安装指南](docs/12-installation.md)。发布包包含构建产物；GitHub 自动生成的源码 ZIP 需要自行构建。本版提供 npm `alpha` 发布渠道，也保留 GitHub Release 安装包。
+桌面用户使用桌面应用自带 CLI 或插件管理入口安装到 `desktop`，然后重启桌面应用。不要使用不匹配的全局 CLI。完整命令、备份、卸载和回退见 [安装指南](docs/12-installation.md)。发布包包含构建产物；GitHub 自动生成的源码 ZIP 需要自行构建。本版提供 npm `beta` 发布渠道，也保留 GitHub Release 安装包。
 
 ## 一分钟演示
+
+![beta.1 实际界面：文件变化 → 检查 → 阅读 → 复核](docs/assets/recheck-beta1-demo.gif)
+
+上图使用一次性样例 `evidence.txt`：`API_VERSION=v1` 改为 `v2`，检查提示依据变化，阅读后主动否定原结论并保存说明。截图按流程生成并停留展示，无模型判断。
 
 1. 创建卡片：标题“重试不会重复扣款”，填写结论，绑定 1–8 个项目相对文件路径。
 2. 点击检查，显示“依据未变化”。
 3. 修改样例依据文件，再检查，显示“依据已变化”。
-4. 阅读依据后主动选择支持、否定或不确定，并填写复核说明。
+4. 阅读依据后确认已阅读，主动选择支持、否定或不确定，并填写复核说明。
 5. 查看历史，生成 Markdown 预览、复制或导出为新文件。
 
 **依据未变化不证明结论正确。** 文件新鲜度和复核意见独立；复核前会重新读取依据并拒绝过期 revision 或 checkId。演示操作建议在专用样例项目中进行。
@@ -50,7 +54,7 @@ Agent 创建示例：
 {"action":"create","title":"重试不会重复扣款","claim":"相同 requestId 的重试只扣款一次。","files":["src/payment.ts","tests/retry.test.ts"]}
 ```
 
-其他 action：`list/get/edit/check/review/archive/export`。`edit/review/archive` 和单卡 `check` 使用最新 `expectedRevision`；`review` 同时引用最新持久检查的 `checkId`。工作区、来源、指纹与时间来自可信宿主，不能由参数指定。
+其他 action：`list/get/edit/check/review/archive/export`。`edit/review/archive` 和单卡 `check` 使用最新 `expectedRevision`；`review` 同时引用最新持久检查的 `checkId`。beta.1 新增 `check scope:selected`，传入 1–100 个 `{cardId, expectedRevision}`；逐卡返回冲突与实际保存情况。列表支持意见筛选及 attention/checked/updated 排序。工作区、来源、指纹与时间来自可信宿主，不能由参数指定。
 
 ## 数据与边界
 
@@ -76,7 +80,7 @@ npm.cmd run test:package
 npm.cmd pack
 ```
 
-`check` 包含 Host/Client 类型检查、两端构建及 37 项真实 FS/Native/Node PTC、诊断和依据反馈测试；`test:package` 在独立配置中安装实际 tgz、运行该宿主的真实 SDK 测试、启停 20 次、卸载重装、回退 alpha.5 再升级，并验证数据与历史保留。它只操作忽略的 `.integration` 目录。`prepack` 会执行 `check`。
+`check` 包含 Host/Client 类型检查、两端构建及 47 项真实 FS/Native/Node PTC、诊断和依据反馈测试；`test:package` 在独立配置中安装实际 tgz、运行该宿主的真实 SDK 测试、启停 20 次、卸载重装、回退 alpha.6 再升级，并验证数据与历史保留。它只操作忽略的 `.integration` 目录。`prepack` 会执行 `check`。
 
 指定宿主：`npm run test:package -- --host 0.2.1-alpha.1 --web`。侧栏“版本与诊断”按需读取状态，可复制不含项目路径和业务内容的摘要；允许写入的策略仍受实际文件权限约束。宿主版本匹配不代替平台验收，未验证组合见兼容清单。
 

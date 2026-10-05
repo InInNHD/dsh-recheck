@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import { waitForRecheckReady, verifyDiagnostics } from './diagnostics-smoke.mjs'
 import { verifyEvidenceEntry } from './evidence-entry-smoke.mjs'
+import { verifyReviewQueue } from './review-queue-smoke.mjs'
 
 // 只在本地专用 DSH 配置中运行；所有数据都是本脚本创建的独立验收项目。
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -93,6 +94,7 @@ try {
   assert.equal(await panel.getByLabel('复核意见').inputValue(), '', '不得预选支持意见。')
   await panel.getByLabel('复核意见').selectOption('refuted')
   await panel.getByLabel('复核说明（必填）').fill('实机阅读后否定；这是显式用户意见。')
+  await panel.getByLabel('我已阅读本次检查对应的依据文件').check()
   await savedClick('保存'); assert.match(await panel.innerText(), /依据未变化\s*·\s*复核意见：否定/)
   // 用另一调用模拟并发编辑；保存冲突应保留本地输入，重新读取不自动覆盖草稿。
   await button('编辑').click()
@@ -235,10 +237,12 @@ try {
     assert.match(await panel.innerText(), /保留的编辑草稿/)
   } finally { await writeFile(dataPath, originalStore) }
   assert.equal(store.cards[0].versions[0].actor.kind, 'user')
+  const queueChecks = await verifyReviewQueue(page, { project })
   assert.equal(errors.length, 0, errors.join('\n')); assert.equal(modelRequests.length, 0, '卡片操作不应发送模型消息。')
   const report = { passed: true, project, sessionId, checks: ['原生入口与项目绑定', '宿主认证与拒绝伪造工作区', '创建及双状态', '完整文件检查', '主动否定复核', '并发冲突保留草稿', '导出新文件并拒绝覆盖', '归档恢复', '真实只读模式临时检查不写入', '持久检查清除临时显示', '窄栏与键盘焦点', 'UTC及时区展开', 'A/B项目草稿隔离与同项目新会话恢复', '无模型请求及页面异常'], screenshot: join(project, 'web-result.png') }
   report.checks.push('alpha.5 诊断与版本不一致提示', '诊断白名单与窄栏', '20 次真实会话切换无重复列表请求', '迟到响应隔离')
   report.checks.push('alpha.6 逐项错误与焦点定位', '失败保留输入及修正重试', '中文空格路径与 composition 提交保护', '原生来源会话导航与不可用反馈')
+  report.checks.push(...queueChecks)
   await writeFile(option('--report') ?? join(root, '.integration/web-smoke-result.json'), JSON.stringify(report, null, 2))
   console.log(JSON.stringify(report, null, 2))
 } catch (error) {
