@@ -1,6 +1,6 @@
 {
   "name": "dsh-recheck",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.0-beta.1",
   "description": "Track conclusions and revisit them when evidence files change.",
   "type": "module",
   "main": "lib/index.js",
@@ -27,7 +27,9 @@
     "compatibility.json",
     "docs/17-alpha5-acceptance.md",
     "docs/16-ecosystem-research-and-roadmap.md",
-    "docs/18-alpha6-acceptance.md"
+    "docs/18-alpha6-acceptance.md",
+    "docs/19-beta1-acceptance.md",
+    "docs/assets/*.gif"
   ],
   "license": "MIT",
   "engines": {
@@ -100,6 +102,6 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org",
-    "tag": "alpha"
+    "tag": "beta"
   }
 }

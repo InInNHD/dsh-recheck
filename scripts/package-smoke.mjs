@@ -123,7 +123,11 @@ try {
   }
   const card = await recheck({ action: 'create', title: 'Packaged lifecycle check', claim: 'Project data survives reinstall', files: ['evidence.txt'] })
   await recheck({ action: 'check', scope: 'card', cardId: card.id, expectedRevision: card.revision })
-  const checked = await recheck({ action: 'get', cardId: card.id, includeHistory: true })
+  let checked = await recheck({ action: 'get', cardId: card.id, includeHistory: true })
+  assert.ok((await recheck({ action: 'list', assessment: 'unreviewed', sort: 'checked' })).capabilities.includes('selectedCheck'))
+  const selected = await recheck({ action: 'check', scope: 'selected', targets: [{ cardId: card.id, expectedRevision: checked.revision }] })
+  assert.equal(selected.counts.saved, 1); assert.equal(selected.results[0].saved, true)
+  checked = await recheck({ action: 'get', cardId: card.id, includeHistory: true })
   const reviewed = await recheck({ action: 'review', cardId: card.id, expectedRevision: checked.revision, checkId: checked.latestCheck.checkId, assessment: 'uncertain', note: 'Lifecycle fixture, no independent semantic verification' })
   const dataPath = join(fixture, '.dsh/recheck/cards.json'), before = hash(await readFile(dataPath))
   await stop(); await setBundle(false)
@@ -135,7 +139,7 @@ try {
   assert.deepEqual(restored.versions, reviewed.versions); assert.equal(restored.revision, reviewed.revision)
   assert.equal(restored.latestCheck.checkId, reviewed.latestCheck.checkId); assert.equal(hash(await readFile(dataPath)), before)
   {
-    await stop(); npm(['install', ...flags, 'dsh-recheck@0.1.0-alpha.5'])
+    await stop(); npm(['install', ...flags, 'dsh-recheck@0.1.0-alpha.6'])
     await start()
     const rollback = await recheck({ action: 'get', cardId: card.id, includeHistory: true })
     assert.deepEqual(rollback.versions, reviewed.versions); assert.equal(hash(await readFile(dataPath)), before)
@@ -148,8 +152,8 @@ try {
     const code = await new Promise((resolve, reject) => { web.once('exit', resolve); web.once('error', reject) })
     assert.equal(code, 0, 'Real Web smoke must pass')
   }
-  const report = { passed: true, os: process.platform, node: process.version, plugin: manifest.version, dsh: hostVersion, sha256: hash(await readFile(tarball)), packagedInstallation: true, absentAfterUninstall: true,
-    activeAfterReinstall: true, historyPreserved: true, storeBytesPreserved: true, rollbackVersion: '0.1.0-alpha.5', liveToggleCycles: 20, web: process.argv.includes('--web'), coexist: process.argv.includes('--coexist') ? 'dsh-boot-animation@0.4.2' : null, modelMessagesSent: false }
+  const report = { passed: true, home, webResult: process.argv.includes('--web') ? join(home, 'web-result.json') : null, os: process.platform, node: process.version, plugin: manifest.version, dsh: hostVersion, sha256: hash(await readFile(tarball)), packagedInstallation: true, absentAfterUninstall: true,
+    activeAfterReinstall: true, historyPreserved: true, storeBytesPreserved: true, rollbackVersion: '0.1.0-alpha.6', liveToggleCycles: 20, web: process.argv.includes('--web'), coexist: process.argv.includes('--coexist') ? 'dsh-boot-animation@0.4.2' : null, modelMessagesSent: false }
   await writeFile(join(root, `.integration/package-smoke-${manifest.version}-${process.platform}-${hostVersion}-result.json`), JSON.stringify(report, null, 2) + '\n')
   console.log(JSON.stringify(report, null, 2))
 } catch (error) {

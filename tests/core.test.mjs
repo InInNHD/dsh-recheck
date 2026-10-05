@@ -380,6 +380,106 @@ async function seed(f, cards) {
   await writeFile(join(f.cwd, '.dsh/recheck/cards.json'), JSON.stringify(store))
   return store
 }
+
+const targets = cards => cards.map(c => ({ cardId: c.id, expectedRevision: c.revision }))
+
+test('beta.1 选中范围严格校验，不静默去重或扩大检查范围', async t => {
+  const f = await fixture(t), c = await f.create(), before = await f.stored(), one = targets([c])[0]
+  for (const invalid of [[], [one, one], Array.from({ length: 101 }, () => one), [{ ...one, expectedRevision: 0 }],
+    [{ ...one, expectedRevision: 1.5 }], [{ ...one, cwd: f.cwd }], [{ cardId: c.id }], [null], 'all']) {
+    await rejection(f, { action: 'check', scope: 'selected', targets: invalid }, 'INVALID_INPUT')
+  }
+  await rejection(f, { action: 'check', scope: 'all', targets: [one] }, 'INVALID_INPUT')
+  await rejection(f, { action: 'check', scope: 'selected', targets: [one], cardId: c.id }, 'INVALID_INPUT')
+  await rejection(f, { action: 'list', assessment: 'auto', sort: 'checked' }, 'INVALID_INPUT')
+  await rejection(f, { action: 'list', sort: 'random' }, 'INVALID_INPUT')
+  await rejection(f, { action: 'list', assessment: ['supported'] }, 'INVALID_INPUT')
+  await rejection(f, { action: 'list', sort: ['attention'] }, 'INVALID_INPUT')
+  await rejection(f, { action: 'check', scope: ['selected'], targets: [one] }, 'INVALID_INPUT')
+  assert.equal(await f.stored(), before)
+})
+
+test('beta.1 选中共享依据只读一次，仅所选卡片保存，不自动复核', async t => {
+  const f = await fixture(t), a = await f.create(), b = await f.create(), omitted = await f.create({ files: ['b.txt'] })
+  let reads = 0, writes = 0; const write = f.fs.writeText.bind(f.fs)
+  f.fs.internals.inspectReadBytesAfterStat = file => { if (file.displayPath.endsWith('a.txt')) reads++ }
+  f.fs.writeText = async (...args) => { writes++; return write(...args) }
+  const result = await f.ok({ action: 'check', scope: 'selected', targets: targets([b, a]) })
+  assert.equal(reads, 1); assert.equal(writes, 1); assert.equal(result.counts.saved, 2)
+  assert.deepEqual(result.results.map(r => r.cardId), [b.id, a.id]); assert.ok(result.results.every(r => r.saved && r.checkId))
+  const untouched = await f.get(omitted.id); assert.equal(untouched.revision, 1); assert.equal(untouched.latestCheck, undefined)
+  for (const c of [a, b]) { const after = await f.get(c.id); assert.equal(after.assessment, 'unreviewed'); assert.equal(after.versions.length, 1) }
+})
+
+test('beta.1 缺失、归档和过期 revision 逐卡反馈，合法目标仍保存', async t => {
+  const f = await fixture(t), good = await f.create(), stale = await f.create(), archived = await f.create()
+  await f.ok({ action: 'edit', cardId: stale.id, expectedRevision: 1, title: '外部更新' })
+  await f.ok({ action: 'archive', cardId: archived.id, expectedRevision: 1, archived: true })
+  const missing = { id: randomUUID(), revision: 1 }, batch = targets([stale, good, missing, archived])
+  const r = await f.ok({ action: 'check', scope: 'selected', targets: batch })
+  assert.deepEqual(r.results.map(r => r.reason?.code ?? 'SAVED'), ['REVISION_CONFLICT', 'SAVED', 'CARD_NOT_FOUND', 'ARCHIVED_CARD'])
+  assert.equal(r.counts.saved, 1); assert.equal(r.counts.conflict, 1); assert.equal(r.counts.error, 2)
+  const before = await f.stored(), failed = await f.ok({ action: 'check', scope: 'selected', targets: targets([stale, missing, archived]) })
+  assert.equal(failed.saved, false); assert.equal(failed.counts.saved, 0); assert.equal(await f.stored(), before)
+})
+
+for (const mutation of ['edit', 'archive']) test(`beta.1 选中检查读取中 ${mutation}，单卡冲突不覆盖更新`, async t => {
+  const f = await fixture(t), first = await f.create(), second = await f.create({ files: ['b.txt'] })
+  let mutated = false
+  f.fs.internals.inspectReadBytesAfterStat = async file => {
+    if (!mutated && file.displayPath.endsWith('a.txt')) {
+      mutated = true
+      await f.ok({ action: mutation, cardId: first.id, expectedRevision: 1, ...(mutation === 'archive' ? { archived: true } : { title: '读取期间更新' }) })
+    }
+  }
+  const r = await f.ok({ action: 'check', scope: 'selected', targets: targets([first, second]) })
+  assert.equal(r.results[0].outcome, 'conflict'); assert.equal(r.results[0].saved, false); assert.equal(r.results[1].saved, true)
+  const after = await f.get(first.id); assert.equal(after.latestCheck, undefined); assert.equal(after.revision, 2)
+  assert.equal(mutation === 'archive' ? after.archived : after.title, mutation === 'archive' ? true : '读取期间更新')
+})
+
+test('beta.1 选中只读及中途取消不保存，不提供可用于复核的 checkId', async t => {
+  const f = await fixture(t), first = await f.create(), second = await f.create({ files: ['b.txt'] }), before = await f.stored()
+  f.env.policy.mode = 'read-only'
+  await rejection(f, { action: 'check', scope: 'selected', targets: targets([first, second]) }, 'READ_ONLY')
+  const temp = await f.ok({ action: 'check', scope: 'selected', targets: targets([first, second]), persist: false })
+  assert.equal(temp.counts.checked, 2); assert.equal(temp.counts.saved, 0); assert.ok(temp.results.every(r => !r.checkId && !r.persisted && !r.saved))
+  assert.equal(await f.stored(), before)
+  f.env.policy.mode = 'workspace-write'
+  const controller = new AbortController(); f.env.signal = controller.signal
+  f.fs.internals.inspectReadBytesAfterStat = file => { if (file.displayPath.endsWith('b.txt')) controller.abort() }
+  const r = await f.ok({ action: 'check', scope: 'selected', targets: targets([first, second]) })
+  assert.equal(r.cancelled, true); assert.equal(r.persisted, false); assert.equal(r.saved, false)
+  assert.equal(r.results[0].outcome, 'checked'); assert.equal(r.results[0].checkId, undefined); assert.equal(r.results[0].saved, false)
+  assert.equal(r.results[1].reason.code, 'CANCELLED'); assert.equal(await f.stored(), before)
+})
+
+test('beta.1 意见与新鲜度组合、需要关注规则、稳定排序与未检查位置', async t => {
+  const f = await fixture(t)
+  for (const opinion of ['supported', 'refuted', 'uncertain']) {
+    const c = await f.create({ title: opinion }); await f.check(c); const checked = await f.get(c.id)
+    await f.ok({ action: 'review', cardId: c.id, expectedRevision: checked.revision, checkId: checked.latestCheck.checkId, assessment: opinion, note: '主动阅读后的测试意见' })
+  }
+  await f.create({ title: 'unchecked' })
+  const store = JSON.parse(await f.stored())
+  for (const c of store.cards) { c.updatedAt = '2026-10-01T01:00:00.000Z'; if (c.latestCheck) c.latestCheck.observedAt = '2026-10-01T00:00:00.000Z' }
+  await writeFile(join(f.cwd, '.dsh/recheck/cards.json'), JSON.stringify(store))
+  const refuted = await f.ok({ action: 'list', assessment: 'refuted', freshness: 'unchanged' })
+  assert.equal(refuted.cards.length, 1); assert.equal(refuted.cards[0].needsAttention, false)
+  assert.equal((await f.ok({ action: 'list', needsAttention: true })).cards.length, 2)
+  assert.equal(refuted.counts.active, 4); assert.equal(refuted.counts.needsAttention, 2)
+  for (const sort of ['attention', 'checked', 'updated']) {
+    const listed = (await f.ok({ action: 'list', sort })).cards
+    const expected = [...store.cards].sort((a, b) => {
+      const attention = c => c.versions.at(-1).assessment === 'uncertain' || !c.latestCheck
+      return (sort === 'attention' ? Number(attention(b)) - Number(attention(a)) : sort === 'checked' ? Number(!!b.latestCheck) - Number(!!a.latestCheck) : 0) || a.id.localeCompare(b.id)
+    }).map(c => c.id)
+    assert.deepEqual(listed.map(c => c.cardId), expected)
+    assert.deepEqual((await f.ok({ action: 'list', sort })).cards.map(c => c.cardId), expected)
+    if (sort === 'checked') assert.equal(listed.at(-1).freshness, 'unchecked')
+  }
+  assert.ok((await f.ok({ action: 'list' })).capabilities.includes('selectedCheck'))
+})
 test('活动 100、总量 200 独立限额，归档不释放总容量', async t => {
   const f = await fixture(t)
   let store = await seed(f, Array.from({ length: 100 }, () => undefined))
@@ -391,17 +491,17 @@ test('活动 100、总量 200 独立限额，归档不释放总容量', async t 
   await rejection(f, { action: 'create', title: 'x', claim: 'x', files: ['a.txt'] }, 'CARD_CAPACITY')
   await rejection(f, { action: 'archive', cardId: store.cards[100].id, expectedRevision: 1, archived: false }, 'ACTIVE_CAPACITY')
 })
-test('批量 200 个唯一目标上限：未覆盖部分如实保存 unknown', async t => {
+for (const scope of ['all', 'selected']) test(`${scope} 批量 200 个唯一目标上限：未覆盖部分如实保存 unknown`, async t => {
   const f = await fixture(t)
   const paths = Array.from({ length: 208 }, (_, i) => `e-${i}.txt`)
   await Promise.all(paths.map(path => writeFile(join(f.cwd, path), 'original\r\n')))
-  await seed(f, Array.from({ length: 26 }, (_, i) => paths.slice(i * 8, i * 8 + 8)))
+  const store = await seed(f, Array.from({ length: 26 }, (_, i) => paths.slice(i * 8, i * 8 + 8)))
   let reads = 0
   f.fs.internals.inspectReadBytesAfterStat = file => { if (file.displayPath.includes('e-') && file.displayPath.endsWith('.txt')) reads++ }
-  const result = await f.ok({ action: 'check', scope: 'all' })
+  const result = await f.ok({ action: 'check', scope, ...(scope === 'selected' ? { targets: store.cards.map(c => ({ cardId: c.id, expectedRevision: c.revision })) } : {}) })
   assert.equal(result.counts.checked, 26); assert.equal(result.counts.unknownFiles, 8); assert.equal(reads, 200)
 })
-test('批量 64 MiB 实际读取预算：后续依据 unknown，不截断哈希', async t => {
+for (const scope of ['all', 'selected']) test(`${scope} 批量 64 MiB 实际读取预算：后续依据 unknown，不截断哈希`, async t => {
   const f = await fixture(t), bytes = Buffer.alloc(2 * 1024 * 1024, 65)
   const paths = Array.from({ length: 40 }, (_, i) => `large-${i}.bin`)
   await Promise.all(paths.map(path => writeFile(join(f.cwd, path), bytes)))
@@ -411,15 +511,16 @@ test('批量 64 MiB 实际读取预算：后续依据 unknown，不截断哈希'
   await writeFile(join(f.cwd, '.dsh/recheck/cards.json'), JSON.stringify(store))
   let reads = 0
   f.fs.internals.inspectReadBytesAfterStat = file => { if (file.displayPath.endsWith('.bin')) reads++ }
-  const result = await f.ok({ action: 'check', scope: 'all' })
+  const result = await f.ok({ action: 'check', scope, ...(scope === 'selected' ? { targets: store.cards.map(c => ({ cardId: c.id, expectedRevision: c.revision })) } : {}) })
   assert.equal(result.counts.unknownFiles, 8); assert.equal(reads, 32)
   for (const r of result.results) for (const file of r.files) if (file.status === 'unknown') assert.equal(file.sha256, undefined)
 })
-test('10 秒预算耗尽保存 unknown；用户取消与时间预算不同', async t => {
+for (const scope of ['card', 'selected']) test(`${scope} 10 秒预算耗尽保存 unknown；用户取消与时间预算不同`, async t => {
   const f = await fixture(t), card = await f.create()
   f.fs.internals.inspectReadBytesAfterStat = async file => { if (file.displayPath.endsWith('a.txt')) await new Promise(resolve => setTimeout(resolve, 10_050)) }
-  const result = await f.check(card)
+  const result = await f.ok(scope === 'selected' ? { action: 'check', scope, targets: [{ cardId: card.id, expectedRevision: card.revision }] } : { action: 'check', scope, cardId: card.id, expectedRevision: card.revision })
   assert.equal(result.persisted, true); assert.equal(result.results[0].freshness, 'unknown')
+  assert.equal(result.results[0].files[0].reason, 'TIME_BUDGET')
   assert.equal((await f.get(card.id)).freshness, 'unknown')
 })
 test('8 MiB UTF-8 存储上限，不按 JS 字符数量估算', async t => {
