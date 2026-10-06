@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { randomUUID, createHash } from 'node:crypto'
 import { readFile, writeFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
+import { expect } from 'playwright/test'
 
 // 同一组流程用于真实 Web 和 Electron。仅在调用者创建的隔离项目布置数据。
 export async function verifyReviewQueue(page, { project, simulateLegacy = true }) {
@@ -34,15 +35,16 @@ export async function verifyReviewQueue(page, { project, simulateLegacy = true }
     const search = panel.getByLabel('搜索标题或结论'), opinion = panel.getByLabel('复核意见筛选'), freshness = panel.getByLabel('新鲜度', { exact: true }), sort = panel.getByLabel('排序方式')
     const rows = panel.locator('.rc-card'), selected = title => panel.getByRole('checkbox', { name: `选择卡片：${title}`, exact: true })
     await button('刷新列表').click(); await idle(); await search.fill('beta queue')
-    await opinion.selectOption('refuted'); await freshness.selectOption('unchanged'); assert.equal(await rows.count(), 1)
-    await panel.getByLabel('只显示需要关注').check(); assert.equal(await rows.count(), 0)
+    await opinion.selectOption('refuted'); await freshness.selectOption('unchanged'); await expect(rows).toHaveCount(1)
+    await panel.getByLabel('只显示需要关注').check(); await expect(rows).toHaveCount(0)
     await panel.getByLabel('只显示需要关注').uncheck(); await opinion.selectOption(''); await freshness.selectOption('')
-    assert.equal(await rows.count(), 4)
+    await expect(rows).toHaveCount(4)
     await selected(cards[0].title).focus(); await page.keyboard.press('Space')
-    assert.equal(await button('检查选中的 1 张并保存').isEnabled(), true)
-    await sort.selectOption('checked'); assert.equal(await button('检查选中的 0 张并保存').isDisabled(), true)
-    assert.equal(await rows.last().getByRole('button', { name: cards[3].title, exact: true }).count(), 1)
-    await selected(cards[0].title).check(); await sort.selectOption('updated'); assert.equal(await selected(cards[0].title).isChecked(), false)
+    await expect(button('检查选中的 1 张并保存')).toBeEnabled()
+    await sort.selectOption('checked'); await expect(button('检查选中的 0 张并保存')).toBeDisabled()
+    await expect(rows.last().getByRole('button', { name: cards[3].title, exact: true })).toHaveCount(1)
+    // React 在事件后提交筛选/排序和选择状态；等待可见结果，不能在提交前瞬时断言。
+    await selected(cards[0].title).check(); await sort.selectOption('updated'); await expect(selected(cards[0].title)).not.toBeChecked()
     await sort.selectOption('attention')
     await selected(cards[0].title).check(); await selected(cards[3].title).check()
     const before = JSON.parse(await readFile(dataPath, 'utf8'))
@@ -56,8 +58,8 @@ export async function verifyReviewQueue(page, { project, simulateLegacy = true }
       else assert.deepEqual(next, c, '未选中的卡片不能被检查或修改')
     }
     await panel.getByText('逐卡检查结果（2）', { exact: true }).click(); assert.equal(await panel.locator('.rc-batch-results li').count(), 2)
-    await selected(cards[3].title).check(); await freshness.selectOption('changed'); assert.equal(await button('检查选中的 0 张并保存').isDisabled(), true)
-    await opinion.selectOption('unreviewed'); assert.equal(await rows.count(), 1)
+    await selected(cards[3].title).check(); await freshness.selectOption('changed'); await expect(button('检查选中的 0 张并保存')).toBeDisabled()
+    await opinion.selectOption('unreviewed'); await expect(rows).toHaveCount(1)
     await selected(cards[3].title).check()
     const stale = after.cards.find(c => c.id === cards[3].id)
     const updated = JSON.parse(await readFile(dataPath, 'utf8')), external = updated.cards.find(c => c.id === stale.id)

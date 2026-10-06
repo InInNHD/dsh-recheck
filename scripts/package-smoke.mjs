@@ -20,7 +20,9 @@ const fixture = join(home, 'project')
 await mkdir(profile, { recursive: true }); await mkdir(fixture)
 await writeFile(join(fixture, 'evidence.txt'), 'original evidence\n')
 const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-const sourceTarball = join(root, `${manifest.name}-${manifest.version}.tgz`)
+const suppliedTarball = option('--tarball')
+assert.ok(!suppliedTarball || process.argv.includes('--no-pack'), '--tarball 须与 --no-pack 一起使用，验收给定包而不重新生成。')
+const sourceTarball = suppliedTarball ? resolve(suppliedTarball) : join(root, `${manifest.name}-${manifest.version}.tgz`)
 const tarball = join(home, `${manifest.name}-${manifest.version}.tgz`)
 const env = { ...process.env, DSH_HOME: home, npm_config_cache: join(root, '.integration/npm-cache') }
 const quote = value => `'${value.replaceAll("'", "''")}'`
@@ -130,6 +132,50 @@ try {
   checked = await recheck({ action: 'get', cardId: card.id, includeHistory: true })
   const reviewed = await recheck({ action: 'review', cardId: card.id, expectedRevision: checked.revision, checkId: checked.latestCheck.checkId, assessment: 'uncertain', note: 'Lifecycle fixture, no independent semantic verification' })
   const dataPath = join(fixture, '.dsh/recheck/cards.json'), before = hash(await readFile(dataPath))
+  // 正式版恢复演练：只操作本轮一次性项目，复制数据前先停止所有写入者。
+  const backupPath = join(home, 'cards.backup.json'), damagedPath = join(home, 'cards.damaged.json')
+  const evidencePath = join(fixture, 'evidence.txt'), originalEvidence = await readFile(evidencePath)
+  await stop(); await cp(dataPath, backupPath)
+  assert.equal(hash(await readFile(backupPath)), before)
+  await start()
+  const archived = await recheck({ action: 'archive', cardId: card.id, expectedRevision: reviewed.revision, archived: true })
+  const unarchived = await recheck({ action: 'archive', cardId: card.id, expectedRevision: archived.revision, archived: false })
+  assert.equal(unarchived.archived, false); assert.equal(unarchived.latestCheck, undefined)
+  const edited = await recheck({ action: 'edit', cardId: card.id, expectedRevision: unarchived.revision, claim: 'Post-backup fixture update', note: 'Recovery drill only' })
+  const exported = await recheck({ action: 'export', cardId: card.id, includeHistory: true, path: 'recovery-export.md' })
+  assert.equal(await readFile(join(fixture, 'recovery-export.md'), 'utf8'), exported.markdown)
+  assert.ok(edited.versions.length > reviewed.versions.length)
+  await stop()
+  const damaged = Buffer.from('{"schemaVersion":1,"cards":')
+  await writeFile(dataPath, damaged)
+  await start()
+  const rejected = await rpc('recheck/dispatch', { sessionId, request: { action: 'list' } }, true)
+  assert.equal(rejected.status, 'rejected'); assert.equal(rejected.reason.code, 'CORRUPT_STORE')
+  assert.deepEqual(await readFile(dataPath), damaged, '损坏文件不能被自动清空或覆盖')
+  await stop(); await cp(dataPath, damagedPath); await cp(backupPath, dataPath)
+  // 恢复卡片数据不会恢复依据文件。旧 unchanged 只是历史观察，不能授权当前复核。
+  await writeFile(evidencePath, 'evidence changed after backup\n')
+  await start()
+  const recovered = await recheck({ action: 'get', cardId: card.id, includeHistory: true })
+  assert.deepEqual(recovered.versions, reviewed.versions)
+  assert.equal(recovered.revision, reviewed.revision); assert.equal(recovered.latestCheck.checkId, reviewed.latestCheck.checkId)
+  assert.equal(hash(await readFile(dataPath)), before)
+  const temporary = await recheck({ action: 'check', scope: 'card', cardId: card.id, expectedRevision: recovered.revision, persist: false })
+  assert.equal(temporary.results[0].freshness, 'changed'); assert.equal(hash(await readFile(dataPath)), before)
+  const staleReview = await rpc('recheck/dispatch', { sessionId, request: { action: 'review', cardId: card.id,
+    expectedRevision: recovered.revision, checkId: recovered.latestCheck.checkId, assessment: 'supported', note: 'Must reject stale backup observation' } }, true)
+  assert.equal(staleReview.status, 'rejected'); assert.equal(staleReview.reason.code, 'CHECK_CONFLICT')
+  assert.equal(hash(await readFile(dataPath)), before)
+  await recheck({ action: 'check', scope: 'card', cardId: card.id, expectedRevision: recovered.revision })
+  const rechecked = await recheck({ action: 'get', cardId: card.id, includeHistory: true })
+  assert.equal(rechecked.latestCheck.freshness, 'changed')
+  const rereviewed = await recheck({ action: 'review', cardId: card.id, expectedRevision: rechecked.revision,
+    checkId: rechecked.latestCheck.checkId, assessment: 'uncertain', note: 'Explicit post-recovery fixture review' })
+  assert.equal(rereviewed.versions.at(-1).assessment, 'uncertain')
+  assert.deepEqual(await readFile(damagedPath), damaged)
+  // 回到原始样例继续既有卸载/回退验收；不删除演练导出、损坏副本与备份证据。
+  await stop(); await cp(backupPath, dataPath); await writeFile(evidencePath, originalEvidence)
+  await start()
   await stop(); await setBundle(false)
   npm(['uninstall', ...flags, 'dsh-recheck'])
   await start(); assert.equal((await inventory()).length, 0); assert.equal(hash(await readFile(dataPath)), before)
@@ -153,7 +199,10 @@ try {
     assert.equal(code, 0, 'Real Web smoke must pass')
   }
   const report = { passed: true, home, webResult: process.argv.includes('--web') ? join(home, 'web-result.json') : null, os: process.platform, node: process.version, plugin: manifest.version, dsh: hostVersion, sha256: hash(await readFile(tarball)), packagedInstallation: true, absentAfterUninstall: true,
-    activeAfterReinstall: true, historyPreserved: true, storeBytesPreserved: true, rollbackVersion: '0.1.0-alpha.6', liveToggleCycles: 20, web: process.argv.includes('--web'), coexist: process.argv.includes('--coexist') ? 'dsh-boot-animation@0.4.2' : null, modelMessagesSent: false }
+    activeAfterReinstall: true, historyPreserved: true, storeBytesPreserved: true, rollbackVersion: '0.1.0-alpha.6', liveToggleCycles: 20, web: process.argv.includes('--web'), coexist: process.argv.includes('--coexist') ? 'dsh-boot-animation@0.4.2' : null, modelMessagesSent: false,
+    recovery: { backupBytesVerified: true, archiveRestore: true, markdownExportVerified: true, corruptStorePreserved: true,
+      restoredHistoryAndRevision: true, temporaryCheckDidNotWrite: true, staleReviewRejected: true, freshCheckAndReview: true,
+      postBackupChangesDiscardedExplicitly: true } }
   await writeFile(join(root, `.integration/package-smoke-${manifest.version}-${process.platform}-${hostVersion}-result.json`), JSON.stringify(report, null, 2) + '\n')
   console.log(JSON.stringify(report, null, 2))
 } catch (error) {

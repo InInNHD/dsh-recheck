@@ -29,7 +29,9 @@
     "docs/16-ecosystem-research-and-roadmap.md",
     "docs/18-alpha6-acceptance.md",
     "docs/19-beta1-acceptance.md",
-    "docs/assets/*.gif"
+    "docs/assets/*.gif",
+    "docs/20-stable-release-readiness.md",
+    "docs/21-trial-and-recovery.md"
   ],
   "license": "MIT",
   "engines": {

@@ -6,6 +6,8 @@
 
 **Unofficial community project, independently developed and maintained.**
 
+**Stable 0.1.0 is being prepared, pending the planned one-week real-user trial.** Continue installing beta.1; no stable release or npm `latest` change is made during preparation. See [release readiness](docs/20-stable-release-readiness.md) and [trial and backup/recovery guide](docs/21-trial-and-recovery.md) (Chinese, with an English status summary in the readiness document).
+
 Bind project conclusions to evidence files and revisit them when those files change. Recheck contributes one `recheck` tool and a native DSH right sidebar. Card operations require no additional model calls.
 
 Current prerelease: **0.1.0-beta.1**, adding assessment filters, stable sorting, explicit selected-card checks, and check/read/choose/save review steps. Eight actions and schema 1 remain compatible. See [acceptance notes](docs/19-beta1-acceptance.md), the [compatibility manifest](compatibility.json), and the [versioned Release](https://github.com/InInNHD/dsh-recheck/releases/tag/v0.1.0-beta.1). Pin the version or use the npm `beta` channel. Publication is gated by Windows/Ubuntu × both exact hosts; Release notes link the matching commit and CI result. Web validation does not imply Desktop validation.

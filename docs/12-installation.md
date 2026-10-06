@@ -75,6 +75,8 @@ DSH_HOME="$PWD/.integration/dsh-home" node .integration/dsh-home/profiles/rechec
 
 ## 数据备份与回退
 
+具体 PowerShell 备份、SHA-256 校验、保留当前副本再恢复以及恢复后的重新检查，见 [试用与备份恢复指南](21-trial-and-recovery.md)。恢复会丢弃备份时间点之后新增的卡片状态；旧检查结果不代表当前依据已验证。
+
 停用插件或确认没有写入，复制每个项目的 `.dsh/recheck/cards.json`。卸载不删除该文件。恢复前保留现有文件副本，核对 schemaVersion 和结构；没有自动清空或丢弃历史的恢复方式。
 
 回退使用同一宿主安装先前 Release 的 tgz，重启后读取数据。alpha.1 与 alpha.2 都使用 schemaVersion 1。未来版本若升级 schema，须按迁移文档判断，不能假定旧插件仍可读取。
