@@ -6,6 +6,8 @@
 
 **非官方项目，由社区成员独立开发和维护。**
 
+**0.1.0 正式版准备中，仍待真实用户一周试用验收。** 当前安装版本继续使用 beta.1；本轮不会发布正式版或移动 npm `latest`。见 [正式版待验收清单](docs/20-stable-release-readiness.md) 和 [试用与备份恢复指南](docs/21-trial-and-recovery.md)。
+
 给项目结论绑定文件依据，在依据变化后提醒复核。Recheck 提供一个 `recheck` 工具与 DSH 原生右侧栏；卡片操作不需要额外模型调用。
 
 当前版本 **0.1.0-beta.1**：增加复核意见筛选、稳定排序、显式选中批量检查和“检查 → 阅读 → 选择意见 → 保存”步骤。保持八种业务动作与 schema 1，见 [beta.1 验收说明](docs/19-beta1-acceptance.md)、[兼容清单](compatibility.json) 和 [对应 Release](https://github.com/InInNHD/dsh-recheck/releases/tag/v0.1.0-beta.1)。安装使用固定版本；npm `beta` 为预发布渠道。发布须通过 Windows/Ubuntu × 两个精确宿主的 CI；该提交的运行和结果见 Release。Web 验收不代表其他 Desktop 组合已验证。

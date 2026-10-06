@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — 0.1.0 preparation
+
+- Keep beta.1 as the installable version while the planned three-user, one-week real-project trial remains pending; do not create a stable tag or move npm latest.
+- Add a real packaged recovery drill: stopped-Host byte-verified backup, archive/restore, Markdown export, corrupt-store preservation, full history restore, stale-review rejection and fresh post-recovery checks/reviews.
+- Wait for React-rendered filter, sort and selection results in shared Web/Desktop acceptance instead of instantaneous UI assertions. Add voluntary trial records and explicit manual backup/recovery instructions.
+
 ## 0.1.0-beta.1 — 2026-10-06
 
 - Add combined assessment/freshness filters, stable attention/check/update sorting, explicit selections, separate project/display/selection counts and filter-change selection reset.
