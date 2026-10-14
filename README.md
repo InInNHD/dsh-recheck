@@ -2,15 +2,15 @@
 
 [![CI](https://github.com/InInNHD/dsh-recheck/actions/workflows/ci.yml/badge.svg)](https://github.com/InInNHD/dsh-recheck/actions/workflows/ci.yml)
 
-[English](README.en.md) · [下载 beta 安装包](https://github.com/InInNHD/dsh-recheck/releases) · [安装指南](docs/12-installation.md) · [问题反馈](https://github.com/InInNHD/dsh-recheck/issues)
+[English](README.en.md) · [下载正式安装包](https://github.com/InInNHD/dsh-recheck/releases) · [安装指南](docs/12-installation.md) · [问题反馈](https://github.com/InInNHD/dsh-recheck/issues)
 
 **非官方项目，由社区成员独立开发和维护。**
 
-**0.1.0 正式版准备中，仍待真实用户一周试用验收。** 当前安装版本继续使用 beta.1；本轮不会发布正式版或移动 npm `latest`。见 [正式版待验收清单](docs/20-stable-release-readiness.md) 和 [试用与备份恢复指南](docs/21-trial-and-recovery.md)。
+**试用限制：原计划的 3 名用户、各一周真实项目试用尚未完成。** 维护者于 2026-10-14 调整发布计划，按已有技术验收范围发布 0.1.0；版本号不表示试用目标已经达成。见 [正式版验收与限制](docs/20-stable-release-readiness.md) 和 [试用与备份恢复指南](docs/21-trial-and-recovery.md)。
 
 给项目结论绑定文件依据，在依据变化后提醒复核。Recheck 提供一个 `recheck` 工具与 DSH 原生右侧栏；卡片操作不需要额外模型调用。
 
-当前版本 **0.1.0-beta.1**：增加复核意见筛选、稳定排序、显式选中批量检查和“检查 → 阅读 → 选择意见 → 保存”步骤。保持八种业务动作与 schema 1，见 [beta.1 验收说明](docs/19-beta1-acceptance.md)、[兼容清单](compatibility.json) 和 [对应 Release](https://github.com/InInNHD/dsh-recheck/releases/tag/v0.1.0-beta.1)。安装使用固定版本；npm `beta` 为预发布渠道。发布须通过 Windows/Ubuntu × 两个精确宿主的 CI；该提交的运行和结果见 Release。Web 验收不代表其他 Desktop 组合已验证。
+当前版本 **0.1.0**：沿用 beta.1 的复核意见筛选、稳定排序、显式选中批量检查和“检查 → 阅读 → 选择意见 → 保存”步骤。保持八种业务动作与 schema 1，见 [beta.1 验收说明](docs/19-beta1-acceptance.md)、[兼容清单](compatibility.json) 和 [对应 Release](https://github.com/InInNHD/dsh-recheck/releases/tag/v0.1.0)。安装使用固定版本；npm `latest` 为本次正式版渠道。补充实际包备份恢复演练，并修正验收脚本等待界面更新的方式。发布须通过 Windows/Ubuntu × 两个精确宿主的 CI；该提交的运行和结果见 Release。Web 验收不代表其他 Desktop 组合已验证。
 
 ![Recheck beta.1：筛选、排序与选中检查](docs/assets/recheck-beta1-main.png)
 
@@ -18,23 +18,23 @@
 
 ## 安装
 
-以下命令固定使用 beta.1 与基线宿主 0.2.0-rc.2。其他组合及 alpha.6 回退说明见 [beta.1 安装与回退](docs/19-beta1-acceptance.md#安装与回退)。截图与演示来自真实 beta.1 隔离样例项目。
+以下命令固定使用 0.1.0 与基线宿主 0.2.0-rc.2。其他组合及 beta.1/alpha.6 回退说明见 [安装指南](docs/12-installation.md)。界面和业务行为沿用 beta.1，截图与演示保留真实 beta.1 隔离样例及其版本标注。
 
-从 Releases 下载 `dsh-recheck-0.1.0-beta.1.tgz` 和同名 `.sha256` 文件，校验后通过匹配版本宿主安装。普通 Web 用户可从 npm 安装固定版本：
+从 Releases 下载 `dsh-recheck-0.1.0.tgz` 和同名 `.sha256` 文件，校验后通过匹配版本宿主安装。普通 Web 用户可从 npm 安装固定版本：
 
 ```powershell
-npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-beta.1
+npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0
 npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
 使用下载的 tgz 时，在安装包所在目录运行：
 
 ```powershell
-npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0-beta.1.tgz'
+npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0.tgz'
 npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
-桌面用户使用桌面应用自带 CLI 或插件管理入口安装到 `desktop`，然后重启桌面应用。不要使用不匹配的全局 CLI。完整命令、备份、卸载和回退见 [安装指南](docs/12-installation.md)。发布包包含构建产物；GitHub 自动生成的源码 ZIP 需要自行构建。本版提供 npm `beta` 发布渠道，也保留 GitHub Release 安装包。
+桌面用户使用桌面应用自带 CLI 或插件管理入口安装到 `desktop`，然后重启桌面应用。不要使用不匹配的全局 CLI。完整命令、备份、卸载和回退见 [安装指南](docs/12-installation.md)。发布包包含构建产物；GitHub 自动生成的源码 ZIP 需要自行构建。本版提供 npm `latest` 发布渠道，也保留 GitHub Release 安装包。
 
 ## 一分钟演示
 
@@ -82,7 +82,7 @@ npm.cmd run test:package
 npm.cmd pack
 ```
 
-`check` 包含 Host/Client 类型检查、两端构建及 47 项真实 FS/Native/Node PTC、诊断和依据反馈测试；`test:package` 在独立配置中安装实际 tgz、运行该宿主的真实 SDK 测试、启停 20 次、卸载重装、回退 alpha.6 再升级，并验证数据与历史保留。它只操作忽略的 `.integration` 目录。`prepack` 会执行 `check`。
+`check` 包含 Host/Client 类型检查、两端构建及 47 项真实 FS/Native/Node PTC、诊断和依据反馈测试；`test:package` 在独立配置中安装实际 tgz、运行该宿主的真实 SDK 测试、启停 20 次、卸载重装、分别回退 beta.1、alpha.6 再升级，并验证数据、历史保留及 9 项备份恢复检查。它只操作忽略的 `.integration` 目录。`prepack` 会执行 `check`。
 
 指定宿主：`npm run test:package -- --host 0.2.1-alpha.1 --web`。侧栏“版本与诊断”按需读取状态，可复制不含项目路径和业务内容的摘要；允许写入的策略仍受实际文件权限约束。宿主版本匹配不代替平台验收，未验证组合见兼容清单。
 

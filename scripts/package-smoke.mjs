@@ -184,9 +184,10 @@ try {
   const restored = await recheck({ action: 'get', cardId: card.id, includeHistory: true })
   assert.deepEqual(restored.versions, reviewed.versions); assert.equal(restored.revision, reviewed.revision)
   assert.equal(restored.latestCheck.checkId, reviewed.latestCheck.checkId); assert.equal(hash(await readFile(dataPath)), before)
-  {
-    await stop(); npm(['install', ...flags, 'dsh-recheck@0.1.0-alpha.6'])
+  for (const rollbackVersion of ['0.1.0-beta.1', '0.1.0-alpha.6']) {
+    await stop(); npm(['install', ...flags, `dsh-recheck@${rollbackVersion}`])
     await start()
+    assert.equal((await rpc('recheck/diagnostics', { sessionId }, true)).hostPluginVersion, rollbackVersion)
     const rollback = await recheck({ action: 'get', cardId: card.id, includeHistory: true })
     assert.deepEqual(rollback.versions, reviewed.versions); assert.equal(hash(await readFile(dataPath)), before)
     await stop(); npm(['install', ...flags, tarball]); await start()
@@ -199,7 +200,7 @@ try {
     assert.equal(code, 0, 'Real Web smoke must pass')
   }
   const report = { passed: true, home, webResult: process.argv.includes('--web') ? join(home, 'web-result.json') : null, os: process.platform, node: process.version, plugin: manifest.version, dsh: hostVersion, sha256: hash(await readFile(tarball)), packagedInstallation: true, absentAfterUninstall: true,
-    activeAfterReinstall: true, historyPreserved: true, storeBytesPreserved: true, rollbackVersion: '0.1.0-alpha.6', liveToggleCycles: 20, web: process.argv.includes('--web'), coexist: process.argv.includes('--coexist') ? 'dsh-boot-animation@0.4.2' : null, modelMessagesSent: false,
+    activeAfterReinstall: true, historyPreserved: true, storeBytesPreserved: true, rollbackVersion: '0.1.0-alpha.6', rollbackVersions: ['0.1.0-beta.1', '0.1.0-alpha.6'], liveToggleCycles: 20, web: process.argv.includes('--web'), coexist: process.argv.includes('--coexist') ? 'dsh-boot-animation@0.4.2' : null, modelMessagesSent: false,
     recovery: { backupBytesVerified: true, archiveRestore: true, markdownExportVerified: true, corruptStorePreserved: true,
       restoredHistoryAndRevision: true, temporaryCheckDidNotWrite: true, staleReviewRejected: true, freshCheckAndReview: true,
       postBackupChangesDiscardedExplicitly: true } }

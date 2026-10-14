@@ -1,34 +1,34 @@
 # 安装、卸载与回退 / Installation
 
-版本：Recheck 0.1.0-beta.1。宿主：DSH 0.2.0-rc.2，Node.js 24。非官方社区插件。
+版本：Recheck 0.1.0。宿主：DSH 0.2.0-rc.2，Node.js 24。非官方社区插件。
 
-此页对应 beta.1 复核队列更新。基线为 DSH 0.2.0-rc.2；0.2.1-alpha.1 仅验证 Web，Desktop 未验证。精确范围与公开 CI 复核方法见 [beta.1 验收](19-beta1-acceptance.md)。
+此页对应 0.1.0。原计划的三人一周真实试用未完成，维护者选择在既有技术验收范围内发布；见 [正式版验收与限制](20-stable-release-readiness.md)。基线为 DSH 0.2.0-rc.2；0.2.1-alpha.1 仅验证 Web，Desktop 未验证。精确范围与公开 CI 复核方法见 [beta.1 验收](19-beta1-acceptance.md)。
 
-beta.1 通过 GitHub 预发布 Release 与 npm `beta` 渠道分发同一个 tgz。优先固定版本安装；备份、校验与 alpha.6 回退见 [beta.1 说明](19-beta1-acceptance.md#安装与回退)。
+0.1.0 通过 GitHub 正式 Release 与 npm `latest` 渠道分发同一个 tgz。优先固定版本安装；备份、校验与 beta.1/alpha.6 回退见下文。
 
 ## npm 安装
 
-Web：`npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-beta.1`。Linux 用 `npx`。Desktop 将下文 bundled CLI 的 add 参数替换为 `dsh-recheck@0.1.0-beta.1`。预发布使用固定版本或 `dsh-recheck@beta`；`latest` 可能仍指向旧版，不用于选择本次预发布。
+Web：`npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0`。Linux 用 `npx`。Desktop 将下文 bundled CLI 的 add 参数替换为 `dsh-recheck@0.1.0`。本次正式版使用固定版本 `dsh-recheck@0.1.0`；发布后 `dsh-recheck@latest` 指向 0.1.0。`beta` 保留为 beta.1。
 
 ## GitHub Release 安装包
 
-从 https://github.com/InInNHD/dsh-recheck/releases/tag/v0.1.0-beta.1 下载 tgz 和 `.tgz.sha256`。不要将自动生成的 Source code ZIP 当作预构建插件。
+从 https://github.com/InInNHD/dsh-recheck/releases/tag/v0.1.0 下载 tgz 和 `.tgz.sha256`。不要将自动生成的 Source code ZIP 当作预构建插件。
 
 PowerShell 校验：
 
 ```powershell
-Get-FileHash -Algorithm SHA256 -LiteralPath './dsh-recheck-0.1.0-beta.1.tgz'
-Get-Content -LiteralPath './dsh-recheck-0.1.0-beta.1.tgz.sha256'
+Get-FileHash -Algorithm SHA256 -LiteralPath './dsh-recheck-0.1.0.tgz'
+Get-Content -LiteralPath './dsh-recheck-0.1.0.tgz.sha256'
 ```
 
-Linux 校验：`sha256sum -c dsh-recheck-0.1.0-beta.1.tgz.sha256`。
+Linux 校验：`sha256sum -c dsh-recheck-0.1.0.tgz.sha256`。
 
 ## 普通 Web 配置
 
 以下命令使用固定宿主，不依赖旧的全局 dsh 命令。先停止已有 Web 服务；升级前备份 profile 的 package/lock/patch 配置和项目数据。
 
 ```powershell
-npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0-beta.1.tgz'
+npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add './dsh-recheck-0.1.0.tgz'
 npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
@@ -47,7 +47,7 @@ npx.cmd --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web rem
 ```powershell
 $recheckDesktopCli = 'C:\Path\To\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd'
 & $recheckDesktopCli --version
-& $recheckDesktopCli plugin --profile desktop add 'C:\Downloads\dsh-recheck-0.1.0-beta.1.tgz'
+& $recheckDesktopCli plugin --profile desktop add 'C:\Downloads\dsh-recheck-0.1.0.tgz'
 ```
 
 版本须为 0.2.0-rc.2。然后从桌面应用入口启动，选择项目会话并打开原生右侧栏。不能用普通 CLI 启动 Electron 的 desktop profile。
@@ -79,6 +79,6 @@ DSH_HOME="$PWD/.integration/dsh-home" node .integration/dsh-home/profiles/rechec
 
 停用插件或确认没有写入，复制每个项目的 `.dsh/recheck/cards.json`。卸载不删除该文件。恢复前保留现有文件副本，核对 schemaVersion 和结构；没有自动清空或丢弃历史的恢复方式。
 
-回退使用同一宿主安装先前 Release 的 tgz，重启后读取数据。alpha.1 与 alpha.2 都使用 schemaVersion 1。未来版本若升级 schema，须按迁移文档判断，不能假定旧插件仍可读取。
+回退时停止宿主并备份配置与项目数据，用相同宿主安装 `dsh-recheck@0.1.0-beta.1`（上一公开版本）或 `dsh-recheck@0.1.0-alpha.6`，也可使用对应 Release tgz；重启后读取历史并重新检查依据。0.1.0、beta.1 与 alpha.6 均使用 schemaVersion 1。未来版本若升级 schema，须按迁移文档判断，不能假定旧插件仍可读取。
 
 遇到冲突先重新读取卡片；损坏存储先留副本。卡片操作无需配置模型消息或额外模型调用。
