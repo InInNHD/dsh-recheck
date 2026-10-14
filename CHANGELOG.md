@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0 — 2026-10-14
+
+- Release on npm latest with the existing runtime behavior, schema 1 and exact Host compatibility range. Build a new 0.1.0 artifact; retain published beta.1 artifacts.
+- The maintainer explicitly revised the release plan: the planned three-user, one-week real-project trial is still incomplete and continues after release. Technical checks do not replace real-user feedback; see docs/20-stable-release-readiness.md.
+- Verify rollback to both beta.1 and alpha.6 and add a real packaged recovery drill: stopped-Host byte-verified backup, archive/restore, Markdown export, corrupt-store preservation, full history restore, stale-review rejection and fresh post-recovery checks/reviews.
+- Wait for React-rendered filter, sort and selection results in shared Web/Desktop acceptance instead of instantaneous UI assertions. Add voluntary trial records and explicit manual backup/recovery instructions.
+
 ## 0.1.0-beta.1 — 2026-10-06
 
 - Add combined assessment/freshness filters, stable attention/check/update sorting, explicit selections, separate project/display/selection counts and filter-change selection reset.

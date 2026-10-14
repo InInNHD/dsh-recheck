@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pluginVersion": "0.1.0-beta.1",
+  "pluginVersion": "0.1.0",
   "storageSchema": 1,
   "supportedHosts": [
     "0.2.0-rc.2",

@@ -6,9 +6,11 @@
 
 **Unofficial community project, independently developed and maintained.**
 
+**Trial limitation: the planned three-user, one-week real-project trial is not complete.** On 2026-10-14 the maintainer chose to release 0.1.0 within the existing technical validation scope. The version number does not mean the trial goals were met. See [release acceptance and limitations](docs/20-stable-release-readiness.md) and [trial and backup/recovery guide](docs/21-trial-and-recovery.md) (Chinese, with an English status summary in the acceptance document).
+
 Bind project conclusions to evidence files and revisit them when those files change. Recheck contributes one `recheck` tool and a native DSH right sidebar. Card operations require no additional model calls.
 
-Current prerelease: **0.1.0-beta.1**, adding assessment filters, stable sorting, explicit selected-card checks, and check/read/choose/save review steps. Eight actions and schema 1 remain compatible. See [acceptance notes](docs/19-beta1-acceptance.md), the [compatibility manifest](compatibility.json), and the [versioned Release](https://github.com/InInNHD/dsh-recheck/releases/tag/v0.1.0-beta.1). Pin the version or use the npm `beta` channel. Publication is gated by Windows/Ubuntu × both exact hosts; Release notes link the matching commit and CI result. Web validation does not imply Desktop validation.
+Current release: **0.1.0**, retaining beta.1 assessment filters, stable sorting, explicit selected-card checks, and check/read/choose/save review steps. Eight actions and schema 1 remain compatible. See [acceptance notes](docs/19-beta1-acceptance.md), the [compatibility manifest](compatibility.json), and the [versioned Release](https://github.com/InInNHD/dsh-recheck/releases/tag/v0.1.0). Pin the version or use the npm `latest` channel. This release adds packaged backup/recovery drills and fixes UI acceptance assertions to await rendered results. Publication is gated by Windows/Ubuntu × both exact hosts; Release notes link the matching commit and CI result. Web validation does not imply Desktop validation.
 
 ![Recheck beta.1 filters, sorting and selected checks](docs/assets/recheck-beta1-main.png)
 
@@ -16,25 +18,25 @@ Current prerelease: **0.1.0-beta.1**, adding assessment filters, stable sorting,
 
 ## Install
 
-The commands below pin beta.1 with Harness 0.2.0-rc.2. See [beta.1 acceptance notes](docs/19-beta1-acceptance.md) for verified combinations and rollback to alpha.6. Screenshots and the demo use a real beta.1 disposable project.
+The commands below pin 0.1.0 with Harness 0.2.0-rc.2. See [installation notes](docs/12-installation.md) for verified combinations and rollback to beta.1/alpha.6. UI behavior is retained from beta.1; screenshots and the demo remain labeled as real beta.1 captures.
 
 Install the pinned npm version with the matching Web host:
 
 ```sh
-npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0-beta.1
+npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add dsh-recheck@0.1.0
 npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
 Download the tgz and SHA-256 checksum from Releases. For Web, run these commands from the download directory with the matching host:
 
 ```sh
-npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add ./dsh-recheck-0.1.0-beta.1.tgz
+npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh plugin --profile web add ./dsh-recheck-0.1.0.tgz
 npx --yes --package=@deepseek-ai/dsh@0.2.0-rc.2 dsh web
 ```
 
 Use `npx.cmd` in Windows PowerShell. Desktop users install into the `desktop` profile through the application's bundled CLI or plugin manager, then restart Desktop. Do not start the Electron desktop profile with a standalone Web CLI. [Full install, backup, removal and rollback instructions](docs/12-installation.md).
 
-The release tgz includes built files. GitHub's automatically generated source ZIP requires a build. This version supports the npm `beta` channel as well as GitHub Release distribution.
+The release tgz includes built files. GitHub's automatically generated source ZIP requires a build. This version supports the npm `latest` channel as well as GitHub Release distribution.
 
 ## Demo
 
@@ -65,7 +67,7 @@ npm run test:package
 npm pack
 ```
 
-`check` runs Host/Client type checks, build and 47 real FS/Native/Node PTC, diagnostics and evidence-feedback tests. `test:package` installs the actual tgz, runs tests against that host's SDK, toggles the live plugin 20 times, and verifies uninstall/reinstall, rollback to alpha.6, upgrade again and unchanged data/history. Use `npm run test:package -- --host 0.2.1-alpha.1 --web` for the second host. Test data stays in ignored `.integration`. Desktop tests require `--app` or `RECHECK_DESKTOP_APP`.
+`check` runs Host/Client type checks, build and 47 real FS/Native/Node PTC, diagnostics and evidence-feedback tests. `test:package` installs the actual tgz, runs tests against that host's SDK, toggles the live plugin 20 times, and verifies uninstall/reinstall, rollback to both beta.1 and alpha.6, upgrade again, unchanged data/history and nine backup/recovery checks. Use `npm run test:package -- --host 0.2.1-alpha.1 --web` for the second host. Test data stays in ignored `.integration`. Desktop tests require `--app` or `RECHECK_DESKTOP_APP`.
 
 The collapsed diagnostics panel reads status on demand. Its copyable summary excludes workspace paths, session identifiers and business content. A permissive session policy does not override filesystem permissions. Host-version support is distinct from platform validation; consult the compatibility manifest.
 
